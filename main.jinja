@@ -1,0 +1,5 @@
+<tr class="mainTr">
+    {% for dataColumn in input_json %}
+        <td class="dataTd" data-column="{{dataColumn}}">{{input_json[dataColumn]}}</td>
+    {% endfor %}
+</tr>

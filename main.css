@@ -1,0 +1,353 @@
+
+html {
+    font-family: 'Source Sans 3', sans-serif, serif;
+    overflow-y: hidden;
+}
+body {
+    white-space: nowrap;
+    background-color: rgb(33, 44, 68);
+}
+
+h2 {
+    color: white;
+}
+
+a {
+    color: rgb(95, 191, 255);
+    font-style: italic;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+#mainTable {
+    display: block;
+    background-color: rgb(33, 44, 68);
+    color: white;
+    table-layout: fixed;
+    border: none;
+    white-space: nowrap;
+    line-height: 15px;
+    width: 1763px; /* = columnWidth * numberOfColumns + 13, where 13 accounts for the width of the vertical scrollbar */
+    max-height: 375px; /* TODO: has to be adjusted to predefined height (e.g. when using an iframe) */
+    min-height: 150px;
+    overflow-x: auto;
+    overflow-y: auto;
+}
+
+#tableWrapper {
+    background-color: rgb(33, 44, 68);
+}
+
+.header-text {
+    width: 150px;
+    transform: scale(0.98, 1.02);
+}
+
+.dataTd, .mainTh, .tablesorter-header {
+    min-width: 250px; /* column width */
+}
+
+.dataTd {
+    padding-left: 10px;
+    padding-right: 10px;
+    box-sizing: border-box;
+    display: table-cell;
+    overflow: hidden; /* Clips row/entry text on resize */
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 50px; /* For some reason, this will ensure that the <td> textContent will not block when the column is shrunk.*/
+    height: 35px;
+}
+
+.mainTh {
+    background-color: rgb(47, 61, 91);
+    text-align: left;
+    position: relative;
+    padding: 3px 3px 3px 3px;
+    box-sizing: border-box;
+}
+
+.mainTr {
+    background-color: rgb(27, 28, 54);
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+.header-text {
+    padding: 7px 0px 7px 7px;
+    color: white;
+    font-size: 14px;
+    text-align: left;
+    color: white;
+    z-index: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.function-bar {
+    background-color: rgb(47, 61, 91);
+    width: 80px;
+    display: inline-block;
+    overflow: visible;
+    white-space: nowrap;
+    position: absolute;
+    top: 55%;
+    left: 86%;
+    transform: translate(-50%, -50%);
+}
+
+.resize-area {
+    width: 20px;
+    cursor: col-resize;
+    text-align: center;
+    white-space: nowrap;
+    z-index: 1;
+    float: left;
+}
+
+.separator {
+    color: rgb(104, 135, 156);
+    padding-top: 2px;
+    font-size: 20px;
+    white-space: nowrap;
+    z-index: 1;
+    transform: scale(0.9, 1.4);
+    margin-top: 6px;
+    float: right;
+}
+
+.sort-icon {
+    padding: 7px;
+    line-height: 12px;
+    letter-spacing: -2px;
+    white-space: nowrap;
+    cursor: pointer;
+    z-index: 1;
+    float: left;
+    position: relative;
+    margin-top: -3px;
+    left: 7px;
+}
+
+.up-arrow, .down-arrow {
+    font-weight: 400;
+    color: white;
+    font-size: small;
+}
+
+.filter-icon-container {
+    position: relative;
+    padding: 5px;
+    line-height: 16px;
+    height: 18px;
+    white-space: nowrap;
+    cursor: pointer;
+    z-index: 1;
+    float: left;
+    border-style: solid;
+    border-width: 2px;
+    border-color: transparent;
+    margin-top: 2px;
+    left: 7px;
+}
+
+.filter-icon {
+    -webkit-transform: rotate(-45deg); 
+    -moz-transform: rotate(-45deg); 
+    -o-transform: rotate(-45deg);
+    transform: rotate(-45deg);
+    margin-top: 2px;
+    margin-left: 3px;
+    font-size: 24px;
+    font-weight: 100;
+}
+
+thead {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+
+.tablesorter-header-inner {
+    display: inline-block;
+    background-color: rgb(47, 61, 91);
+    position: relative;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.dropdown-menu {
+    display: none;
+    position: absolute;
+    background-color: rgb(47, 61, 91);
+    outline-style: solid;
+    outline-color: white;
+    outline-width: 2px;
+    padding: 10px;
+    gap: 3px;
+    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.5);
+    z-index: 2;
+    height: fit-content;
+    color: white;
+    scale: 1.125;
+    margin-top: 38px;
+    font-family: 'Source Sans 3', sans-serif, serif;
+}
+
+.border {
+    background-color: rgb(47, 61, 91);
+    border-top: 2px solid white;
+    border-left: 2px solid white;
+    border-right: 2px solid white;
+    border-radius: 2px;
+    z-index: 3
+}
+
+.show {
+    display: grid;
+}
+
+input, select {
+    background-color: rgb(47, 61, 91);
+    color: white;
+    border-style: solid;
+    border-color: rgb(24, 24, 24);
+    padding: 3px;
+    border-radius: 3px;
+    font-family: inherit;
+    display: block;
+}
+
+input::placeholder {
+    color: rgb(211, 211, 211);
+    margin-left: 3px;
+}
+
+hr {
+    width: 100%;
+    border-style: none;
+    height: 1px;
+    z-index: 4;
+    background-color: rgb(101, 124, 173);
+    opacity: 35%;
+}
+
+.check-filter {
+    display: table;
+}
+
+.check-filter * {
+    display: table-cell;
+    vertical-align: middle;
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgb(33, 44, 68);
+    border: 5px solid rgb(33, 44, 68);
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgb(94, 112, 153);
+    border-radius: 8px;
+    border: 3px solid transparent;
+}
+
+::-webkit-scrollbar-corner {
+    background-color: transparent;
+}
+
+#numRecords, #numRecordsText {
+    font-family: inherit;
+    color: white;
+}
+
+#numRecords {
+    font-size: 20px;
+    font-weight: 475;
+}
+
+#numRecordsText {
+    font-size: 17px;
+    margin-left: 5px;
+    font-weight: 375;
+}
+
+#recordWrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    text-align: center;
+    margin-bottom: 5px;
+}
+
+.expandButton, .jsonButton {
+    background-color: transparent;
+    border: none;
+    color: white;
+    cursor: pointer;
+    width: 20px;
+    height: 20px;
+    font-size: 13px;
+    margin-right: 5px;
+    font-weight: bolder;
+    padding: 0px;
+    color: #2b75ff;
+}
+
+.nestedTable {
+    background-color: rgb(25, 36, 59);
+}
+
+.expandedRow {
+    width: 100%;
+    height: 20px;
+}
+
+#columnFilter {
+    float: left;
+    padding: 0;
+    position: absolute;
+    z-index: 6;
+}
+
+#columnFilterDropdown {
+    display: none;
+    position: absolute;
+    background: white;
+    min-width: 200px;
+    width: fit-content;
+    left: 45px;
+    top: 5px;
+    padding: 10px;
+    background-color: rgb(33, 44, 68);
+    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.5);
+    color: white;
+    border: 1px solid white;
+}
+
+.columnSelect {
+    display: flex;
+    line-height: 25px;
+}
+
+#columnFilterButton {
+    font-size: x-large;
+    font-weight: 300;
+    transform: scale(0.50, 1.0);
+    letter-spacing: -5px;
+    cursor: pointer;
+    text-align: center;
+    background-color: transparent;
+    outline: none;
+    border: none;
+    color: white;
+}
