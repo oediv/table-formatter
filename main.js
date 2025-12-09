@@ -16,40 +16,45 @@ const FUNCTION_BAR_OFFSET = 40;
 const HEADER_TEXT_WIDTH_RATIO = 4/5; // Ratio in relation to function bar width
 const TOGGLE_ANIMATION_MS = 200;
 
-// TODO: find way to make these pseudo-constants run after document.ready() but be globally available
-var ROWS;
-var COLUMN_NAMES;
-var NUM_COLUMNS;
+$(window).on('load', function() {
+    let rowData = document.getElementById("loadDataFrom").innerHTML;
+    const uncleanedData = "<table>" + rowData + "</table>"; // rowData has to be wrapped in a table, otherwise DOMPurify will remove the <tr> tags
+    const cleanedData = DOMPurify.sanitize(uncleanedData, {RETURN_TRUSTED_TYPE: true}); // in all likelihood this is not necessary because the data sanitization should have already happened at a previous point in time. it's a good precaution nonetheless
+    
+    createTable(cleanedData);
+})
 
 function createTable(tableData) {
     createStaticTableElements();
     addTableData(tableData);
 
-    initializeConstants();
-    setupTableHeaders();
-    applyRowStyling();
+    const COLUMN_NAMES = getColumnNames();
+    setupTableHeaders(COLUMN_NAMES);
     setupRowExpansion();
     setupRecordsDisplay();
-    setupTableElementsAndSorting();
+    setupTableElementsAndSorting(COLUMN_NAMES);
     setupSortIconDisplay();
-    setupDropdownMenu();
-    setupDropdownMenuOutOfScopeClosing();
+    setupDropdownMenus();
     setupFiltering();
     setupInitialFunctionBarPosition();
-    setupColumnWidth(NUM_COLUMNS);
+    updateColumnWidth();
     setupColumnResizing();
-    initializeColumnFilters();
-    addColumnFilterButtonEventListener();
+    initializeColumnVisibilityDropdown(COLUMN_NAMES);
     addSelectAllColumnFilterEventListener();
-    addColumnFilterCheckboxEventListener();
+    addColumnFilterCheckboxEventListener(COLUMN_NAMES);
+    applyRowStyling();
 }
 
+/** This function adds the static, table html elements and functions as a sort of template where both data and further elements are inserted via JS.
+ * It includes the column visibility elements (to hide/show columns), the record elements (to show the number of entries in the table), and the actual
+ * table elements (aside from the actual data which is inserted later in the tbody).
+ */
 function createStaticTableElements() {
     const tableHtml = `
         <div>
-            <div id="columnFilter">
-                <button id="columnFilterButton">&#66022;&#66022;&#66022;</button>
-                <div id="columnFilterDropdown">
+            <div id="columnVisibilityWrapper" class="dropdownParent">
+                <button id="columnVisibilityButton" class="dropdownTrigger">&#66022;&#66022;&#66022;</button>
+                <div id="columnVisibilityDropdown" class="dropdown">
                     <span style="font-weight: bold;">Visible Columns:</span>
                     <div class="columnSelect">
                         <input type="checkbox" id="selectAllCheckbox" checked="true">
@@ -77,13 +82,13 @@ function createStaticTableElements() {
 }
 
 /**
- * 
- * @param {*} tableData Sanitized HTML table data in the form table > tbody > tr, where the data lies in the <tr> tags.
+ * This function inserts the data in the table.
+ * @param tableData - Sanitized HTML table data. The data is enclosed in a table, which has a tbody and tr elements (the data must lie in the tr tags).
  */
 function addTableData(tableData) {
     let domParser = new DOMParser();
     let doc = domParser.parseFromString(tableData, "text/html");
-    let rows = doc.body.firstChild.firstChild.children;
+    let rows = Array.from(doc.body.firstChild.firstChild.children); // TODO: add try block
 
     for (let row of rows) {
         $('#tableBody').append(row);
@@ -91,9 +96,9 @@ function addTableData(tableData) {
 }
 
 /**
- * This function takes a UTC ISO 8601 timestamp: YYYY-MM-DDThh:mm:ss.[sssss]Z
- *  and returns it like this: DD.MM.YYYY, hh:mm:ss.sss
- * **/
+ * This function takes a UTC ISO 8601 timestamp: YYYY-MM-DDThh:mm:ss.[sssss]Z and returns it like this: DD.MM.YYYY, hh:mm:ss.sss
+ * If the input data/timestamp does not have the UTC ISO 8601 format, this function returns the unchanged parameter.
+ */
 function prettyTimestamp(timestamp) {
     const utcRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3,}Z$/;
     let isUtcFormat = utcRegex.test(timestamp);
@@ -114,27 +119,31 @@ function prettyTimestamp(timestamp) {
     return timestamp;
 }
 
-function initializeConstants() {
-    COLUMN_NAMES = getDataColumns();
-    NUM_COLUMNS = COLUMN_NAMES.length;
-    ROWS = document.getElementById('mainTable').querySelectorAll('tr');
-}
+/** This function applies styling to specific table columns (specifically, columns that contain timestamp/severity data) and also setups the tablesorter.*/
+function setupTableElementsAndSorting(columnNames) {
+    let timestampColumnIndices = extractTimebasedColumns(columnNames);
+    let severityColumnIndices = extractSeverityColumns(columnNames);
 
-function setupTableElementsAndSorting() {
-    let timestampColumnIndices = extractTimebasedColumns();
-    let severityColumnIndices = extractSeverityColumns();
-
-    postprocessHtmlElements(severityColumnIndices, timestampColumnIndices);
+    postprocessHtmlElements(severityColumnIndices, timestampColumnIndices, columnNames.length);
     setupTablesorter(severityColumnIndices, timestampColumnIndices);
 }
 
-function applyRowColorStyling() {
-    $(".mainTr").filter(":visible:even").css("background-color", "rgb(33, 44, 68)");
-    $(".mainTr").filter(":visible:odd").css("background-color", "rgb(27, 28, 54)");
+/**
+ * This function applies (only) the alternating coloring to the table rows.
+ * @param firstCall - This parameter is only true when this function is first called (i.e. when the table is rendered).
+ * Because the user can apply row filters and, thus, hide certain rows, the row coloring has to be reapplied with the :visible attributes set.
+*/
+function applyRowColorStyling(firstCall) {
+    let evenRows = firstCall ? $(".mainTr").filter(":even") : $(".mainTr").filter(":visible:even");
+    let oddRows = firstCall ? $(".mainTr").filter(":odd") : $(".mainTr").filter(":visible:odd");
+
+    evenRows.css("background-color", "rgb(33, 44, 68)");
+    oddRows.css("background-color", "rgb(27, 28, 54)");
 }
 
+/** This function applies the row styling, which includes the alternating row styling (by calling applyRowColorStyling) and a brightness filter on hover.*/
 function applyRowStyling() {
-    applyRowColorStyling();
+    applyRowColorStyling(true);
     
     $(".mainTr, .nestedEntry").hover(
         function() {
@@ -146,6 +155,8 @@ function applyRowStyling() {
     );
 }
 
+/** The state of the button is implicitly saved through the value of the style.transform attribute.
+ * If the button is not expanded, the value is "", else the value is "rotate(90deg)".*/
 function buttonIsExpanded(button) {
     return button.style.transform == "rotate(90deg)";
 }
@@ -156,7 +167,7 @@ function changeExpandButtonIcon(button, reset) {
         button.style.paddingLeft = "";
     } else {
         button.style.transform = "rotate(90deg)";
-        button.style.paddingLeft = "5px";
+        button.style.paddingLeft = "5px"; // Rotating the button messes up the padding. This adjustment is necessary.
     }
 }
 
@@ -174,17 +185,21 @@ function createRowExpandButton(expanded) {
     return button;
 }
 
-/* Nested JSON data can be expanded fully until depth ~15 or so. Starting at depth ~15 the (right) end of the table is reached and the overflow will be clipped. */
-function setupRowExpansion() {
+/** This function creates the expansion buttons and adds them to the first td (i.e. first entries of the first column) and adds the corresponding event listeners.
+ * If the row contains JSON data, the JSON buttons and event listeners are added accordingly. Nested JSON data can be expanded fully until depth ~15 or so.
+ * Starting at depth ~15 the (right) end of the table is reached and the overflow will be clipped. */
+function setupRowExpansion() { // TODO: NICE TO HAVE: fix JSON depth expansion limit
     for (let tr of $('.mainTr')) {
         let button = createRowExpandButton(false);
         let firstTd = tr.children[0];
         firstTd.prepend(button);
     }
 
-    addExpandButtonEventListeners();   
+    addExpandButtonEventListeners(true);   
 }
 
+/** Users may expand rows and toggle columns (hide/show them) freely. When a row is expanded and all columns of the table are hidden,
+ * and then re-shown, the expanded row is reset. This function also resets the expansion buttons. */
 function resetRowExpansionButtons() {
     $('.mainTr').each(function() {
         $(this).children().each(function() {
@@ -198,6 +213,9 @@ function resetRowExpansionButtons() {
     addRowExpansionButtonToFirstVisibleColumn();
 }
 
+/** The row expansion button is always added to the first entry of the first column.
+ * When this column is hidden (filtered out by the user), the new first entry of the first column needs to have an expansion button.
+ * This function creates a new button and adds corresponding event listeners.*/
 function addRowExpansionButtonToFirstVisibleColumn() {
     let targetColumn = $('.mainTr').first().children(":visible").first();
     if (targetColumn.length == 0 || targetColumn[0].childNodes.length == 2) { // i.e. button is present
@@ -211,20 +229,33 @@ function addRowExpansionButtonToFirstVisibleColumn() {
         $(this).children(":visible").first()[0].prepend(button);
     })
 
-    addExpandButtonEventListeners();
+    addExpandButtonEventListeners(false);
 }
 
-function initializeColumnFilters() {
-    let parent = document.getElementById("columnFilterDropdown");
+/** This function returns a list of all column names. Though not as efficient as possible when called multiple times,
+ * this function avoids the need for a global variable COLUMN_NAMES, which could potentially be misused.*/
+function getColumnNames() {
+    let columnNames = [];
 
-    for (let i = 0; i < COLUMN_NAMES.length; i++) {
-        let columnName = COLUMN_NAMES[i];
+    $('.mainTr').first().children().each(function() {
+        columnNames.push($(this)[0].getAttribute('data-column'))
+    })
+
+    return columnNames;
+}
+
+/** This function dynamically adds the column names to the static dropdown which manages column visibility. */
+function initializeColumnVisibilityDropdown(columnNames) {
+    let parent = document.getElementById("columnVisibilityDropdown");
+
+    for (let i = 0; i < columnNames.length; i++) {
+        let columnName = columnNames[i];
 
         let columnFilterElement = document.createElement('div');
         columnFilterElement.classList.add("columnSelect");
         
         let checkbox = document.createElement("input");
-        let checkboxId = "columnCeckbox" + (i+1);
+        let checkboxId = "columnCheckbox" + (i+1);
         checkbox.classList.add("columnFilterCheckbox");
         checkbox.setAttribute("type", "checkbox");
         checkbox.setAttribute("id", checkboxId);
@@ -241,17 +272,19 @@ function initializeColumnFilters() {
     }
 }
 
+/** This function handles the "Select All" functionality of the column visibility dropdown. */
 function toggleAllColumns(showColumns) {
     if (showColumns) {
         $('tr').children(":hidden").show();
-        setupColumnWidth(NUM_COLUMNS);
+        updateColumnWidth();
         resetRowExpansionButtons();
     } else {
         $('tr').children(":visible").hide();
-        setupColumnWidth(0);
+        updateColumnWidth();
     }
 }
 
+/** This function updates the display when a column is toggled (hidden/shown) in the column visibility dropdown. */
 function toggleColumnDisplay(index, showColumn) {
     $('tr:not(.expansionWindow)').each(function() {
         let trColumn = $(this).children().eq(index);
@@ -262,9 +295,11 @@ function toggleColumnDisplay(index, showColumn) {
 }
 
 /**
- * @param index Index of the column (regardless of whether the column is visible or hidden)
- * @param showColumn Whether the column should be hidden or shown.
- * 
+ * This function handles the hiding/showing of a column and updates the display, the checkbox tick in the column visibility dropdown,
+ * the column width (since that is dependent on the number of columns) and if the new, toggled column is first in the table, the
+ * row expansion is reset (so that the first entry of the first column will contain the row expansion button).
+ * @param index - Index of the column (regardless of whether the column is visible or hidden)
+ * @param showColumn - Whether the column should be hidden or shown.
 **/
 function toggleColumn(index, showColumn) {
     let firstVisibleColumn = $('.mainTr').first().children(":visible").first();        
@@ -277,14 +312,17 @@ function toggleColumn(index, showColumn) {
 
     // Adjust column width:
     let visibleNumColumns = $('tr').eq(0).children(":visible").length;
-    if (visibleNumColumns > 4) setupColumnWidth(visibleNumColumns);
+    if (visibleNumColumns > 4) updateColumnWidth();
     
     if (firstVisibleColumn.index() < index) return; // If first visible column is unaffected, the expansion button can stay where it is
     
     resetRowExpansionButtons();
 }
 
-function addColumnFilterCheckboxEventListener() {
+/** This function adds the event listeners for the checkboxes in the column visibility dropdown. When fired, the selected column will be 
+ * toggled and potential expanded rows will be updated (i.e. the column will be hidden/shown in the expansion as well).
+*/
+function addColumnFilterCheckboxEventListener(columnNames) {
     $('.columnFilterCheckbox').change(function() {
         let index = parseInt($(this)[0].getAttribute("index"));
         let checked = $(this)[0].checked;
@@ -294,11 +332,12 @@ function addColumnFilterCheckboxEventListener() {
         if (!checked) {
             removeColumnFromAllExpansions(columnName);
         } else {
-            addColumnToAllExpansions(columnName);
+            addColumnToAllExpansions(columnName, columnNames);
         }
     })
 }
 
+/** This function works similarly to the addColumnFilterCheckboxEventListener() function. */
 function addSelectAllColumnFilterEventListener() {
     $('#selectAllCheckbox').change(function() {
         let check = this.checked;
@@ -314,14 +353,14 @@ function addSelectAllColumnFilterEventListener() {
     })
 }
 
-/* Returns relative index of the previous entry (within the expansion window). */
-function getIndexOfPrevEntry(columnName) {
-    let indexOfColumn = COLUMN_NAMES.indexOf(columnName);    
+/* This function returns the relative index of the previous entry (within the expansion window). */
+function getIndexOfPrevEntry(columnName, columnNames) {
+    let indexOfColumn = columnNames.indexOf(columnName);    
     let expandedColumnIndices = [];
 
     $('.expandTable').first().children(":nth-child(even)").each(function(index, element) {
         let currColumnName = element.children[1].textContent;
-        expandedColumnIndices.push(COLUMN_NAMES.indexOf(currColumnName));
+        expandedColumnIndices.push(columnNames.indexOf(currColumnName));
     })
 
     // case: column is inserted at position 0
@@ -341,10 +380,9 @@ function getIndexOfPrevEntry(columnName) {
     return null;
 }
 
-function addColumnToAllExpansions(columnName) {
+function addColumnToAllExpansions(columnName, columnNames) {
     let visibleDataTds = $('.expansionWindow').prev().children(":visible");
-    let nextColumns = COLUMN_NAMES.slice(COLUMN_NAMES.indexOf(columnName) + 1);
-    let indexOfPrevEntry = getIndexOfPrevEntry(columnName);
+    let indexOfPrevEntry = getIndexOfPrevEntry(columnName, columnNames);
 
     visibleDataTds.each(function() {
         let dataTd = $(this);
@@ -368,9 +406,8 @@ function removeColumnFromAllExpansions(targetColumnName) {
     })
 }
 
-function addColumnFilterButtonEventListener() {
-    $('#columnFilterButton').on('click', function(e) {
-        let button = $(this)[0];
+function addColumnVisibilityDropdownEventListener() {
+    $('#columnVisibilityButton').on('click', function(e) {
         $(this).next().toggle(TOGGLE_ANIMATION_MS);
     })
 }
@@ -381,8 +418,10 @@ function collapseAllExpansions() {
     })
 }
 
-function addExpandButtonEventListeners() {
-    $('.expandButton').filter(':visible').on('click', function() {
+function addExpandButtonEventListeners(firstCall) {
+    let buttons = firstCall ? $('.expandButton') : $('.expandButton').filter(':visible'); // this aims to fix issues where the button click is not registered (this behavior is fixed with a page refresh; perhaps this function is called when the state of the buttons is still "hidden")
+
+    buttons.on('click', function() {
         let expandButton = $(this)[0];
         let trObj = $(this).closest('tr');
         let index = $('.mainTr').index(trObj);
@@ -410,7 +449,7 @@ function getChildExpansion(row) {
 }
 
 /**
- * TODO: NICE TO HAVE: The regulra row expansion collapses expansions based on the button icon. This may be 
+ * TODO: NICE TO HAVE: The regular row expansion collapses expansions based on the button icon. This may be 
  * possible here as well and might simplify the collapsing logic.
  */
 function addJsonExpansionEvent(jsonButton, row) {
@@ -432,15 +471,16 @@ function addJsonExpansionEvent(jsonButton, row) {
 
 /**
  * 
- * @param dataTd A JQuery object of a <dataTd>
- * @param table The expansion table that the entry will be added into.
- * @param indexOfPrevEntry The relative index of the previous entry within the expansion.
+ * @param dataTd - A JQuery object of a <dataTd>
+ * @param table - The expansion table that the entry will be added into.
+ * @param indexOfPrevEntry - The relative index of the previous entry within the expansion.
  * */
 function addExpandedRowEntry(dataTd, table, indexOfPrevEntry) {
+    let columnNames = getColumnNames(); // this is a special case where passing columnNames as a parameter is unfeasible due to long chain of function calls.
     let td = dataTd[0];
     let i = dataTd.index();
     
-    let key = COLUMN_NAMES[i];
+    let key = columnNames[i];
     let childNodes = td.cloneNode(true).childNodes;
     let elem = extractElementFromChildNodes(childNodes);
     let nestedEntry = addNestedEntry(key, elem, BASE_INDENT, style=td.style, title=td.title);
@@ -552,7 +592,7 @@ function prepareExpandTable() {
     let nestedTable = document.createElement('div');
     let topSpacing = document.createElement('div');
     
-    let numColumns = ROWS[0].children.length;
+    let numColumns = $("tr").first()[0].children.length;
     td.colSpan = numColumns;
     tr.classList.add("expansionWindow");
     nestedTable.style = "background-color: rgb(25, 36, 59); overflow: hidden;";
@@ -593,7 +633,12 @@ function addNestedEntry(key, elem, indent, style=null, title=null) {
     return nestedEntry;
 }
 
-function setupColumnWidth(visibleNumColumns) {     
+function getNumVisibleColumns() {
+    return $('tr').first().children(":visible").length;
+}
+
+function updateColumnWidth() {
+    let visibleNumColumns = getNumVisibleColumns();
     if (visibleNumColumns > DEFAULT_NUM_COLUMNS) return;
 
     let columnWidth = TABLE_WIDTH / visibleNumColumns;
@@ -608,12 +653,12 @@ function setupColumnWidth(visibleNumColumns) {
 }
 
 // TODO: NICE TO HAVE: currently the input field does not allow commands like CTRL+A
-function setupTableHeaders() {
+function setupTableHeaders(columnNames) {
     let TH_TEMPLATE = `
-            <div class="header-text"></div>
-            <div class="function-bar">
-                <div class="filter-icon-container"><div class="filter-icon">&#9906;</div></div>
-                <div class="dropdown-menu">
+            <div class="headerText"></div>
+            <div class="functionBar dropdownParent">
+                <div class="filterIconContainer dropdownTrigger"><div class="filterIcon">&#9906;</div></div>
+                <div class="dropdown columnFilterDropdown">
                     <div>
                         <select name="text-filters" class="text-filters">
                             <option value="contains">Contains</option>
@@ -628,21 +673,23 @@ function setupTableHeaders() {
                             <input class="filterInput" type="text" placeholder="Filter...">
                     </div>
                 </div>
-                <div class="sort-icon">
-                    <div class="up-arrow">&uarr;</div>
-                    <div class="down-arrow">&darr;</div>
+                <div class="sortIcon">
+                    <div class="upArrow">&uarr;</div>
+                    <div class="downArrow">&darr;</div>
                 </div>
-                <div class="resize-area">
+                <div class="resizeArea">
                     <div class="separator">|</div>
                 </div>
             </div>`;
     
     let tableHeaderRow = document.getElementById("tableHeaderRow");
-    for (let i = 0; i < NUM_COLUMNS; i++) {
-        let columnName = COLUMN_NAMES[i].toUpperCase();
+    for (let i = 0; i < columnNames.length; i++) {
+        let originalColumnName = columnNames[i];
+        let columnName = columnNames[i].toUpperCase();
         let th = document.createElement('th');
         th.classList.add("mainTh");
         th.insertAdjacentHTML("beforeend", TH_TEMPLATE);
+        th.children[0].setAttribute('originalColumnName', originalColumnName);
         th.children[0].textContent = columnName;
         tableHeaderRow.appendChild(th);
     }
@@ -656,10 +703,10 @@ function setupRecordsDisplay() {
 }
 
 
-function extractTimebasedColumns() {
+function extractTimebasedColumns(columnNames) {
     let timestampColumnIndices = [];
-    for (let i = 0; i < COLUMN_NAMES.length; i++) {
-        let columnName = COLUMN_NAMES[i];
+    for (let i = 0; i < columnNames.length; i++) {
+        let columnName = columnNames[i];
         if (isTimestampColumn(columnName)) {
             timestampColumnIndices.push(i);
         }
@@ -668,12 +715,12 @@ function extractTimebasedColumns() {
     return timestampColumnIndices;
 }
 
-function extractSeverityColumns() {
+function extractSeverityColumns(columnNames) {
     // 1. extract potential severity column candidates based on the column name
     let severityColumnIndices = [];
     let severityColumnCandidates = [];
-    for (let i = 0; i < COLUMN_NAMES.length; i++) {
-        let columnName = COLUMN_NAMES[i];
+    for (let i = 0; i < columnNames.length; i++) {
+        let columnName = columnNames[i];
         if (isSeverityColumn(columnName)) {
             severityColumnCandidates.push(i);
         }
@@ -683,8 +730,9 @@ function extractSeverityColumns() {
     for (let severityColumnCandidate of severityColumnCandidates) { // usually the number of candidates is equal to one, i.e. this for loop just runs once on average
         let allEntriesAreSeverities = true;
 
-        for (let i = 1; i < ROWS.length; i++) {
-            let currentColumn = ROWS[i].children[severityColumnCandidate];
+        let rows = $("tr").toArray();
+        for (let i = 1; i < rows.length; i++) {
+            let currentColumn = rows[i].children[severityColumnCandidate];
             if (currentColumn == undefined || currentColumn.textContent == undefined) continue;
 
             let data = currentColumn.textContent;
@@ -703,29 +751,51 @@ function extractSeverityColumns() {
     return severityColumnIndices;
 }
 
-function postprocessHtmlElements(severityColumnIndices, timestampColumnIndices) {
-    for (let i = 0; i < ROWS.length; i++) {
-        let tr = ROWS[i];
-        for (let columnIndex = 0; columnIndex < NUM_COLUMNS; columnIndex++) {
-            let td = i == 0 ? tr.children[columnIndex].children[0] : tr.children[columnIndex];
-            if (td == undefined || td.textContent == undefined) continue;
-            let data = td.textContent;
-            
-            // Add text preview on hover for long text:
-            if (data.length >= 30 && !td.classList.contains("mainTh")) { // mainTh left out due to its textContent being irrelevant
-                td.title = data;
-            }
+function modifyTimestamp(td, timestamp) {
+    let modifiedTimestamp = prettyTimestamp(timestamp);
+    let childNodes = td.childNodes;
 
-            if (i == 0) continue;
+    if (childNodes.length == 1) {
+        td.textContent = modifiedTimestamp;
+        return;
+    }
 
-            // Add styling if this is severity data:
-            if (severityColumnIndices.includes(columnIndex)) {
-                td.style = getSeverityColor(data);
-            }
+    // case: childNodes.length == 2, i.e. td contains an expansion button
+    td.childNodes[1].nodeValue = modifiedTimestamp;
 
-            // Make the timestamp more readable if it's timestamp data:
-            if (timestampColumnIndices.includes(columnIndex)) {
-                td.childNodes[td.childNodes.length - 1] = prettyTimestamp(data); // TODO: fix issue
+}
+
+function postprocessHtmlElements(severityColumnIndices, timestampColumnIndices, numColumns) {
+    let rows = $("tr").toArray();
+    for (let i = 0; i < rows.length; i++) {
+        let tr = rows[i];
+        for (let columnIndex = 0; columnIndex < numColumns; columnIndex++) {
+            try {
+                let td = i == 0 ? tr.children[columnIndex].children[0] : tr.children[columnIndex];
+                if (td == undefined || td.textContent == undefined) continue;
+                
+                let childNode = td.childNodes[td.childNodes.length - 1];
+                if (childNode == undefined) continue; 
+                let data = childNode.textContent;
+                
+                // Add text preview on hover for long text:
+                if (data.length >= 30 && !td.classList.contains("mainTh")) { // mainTh left out due to its textContent being irrelevant
+                    td.title = data;
+                }
+
+                if (i == 0) continue;
+
+                // Add styling if this is severity data:
+                if (severityColumnIndices.includes(columnIndex)) {
+                    td.style = getSeverityColor(data);
+                }
+
+                // Make the timestamp more readable if it's timestamp data:
+                if (timestampColumnIndices.includes(columnIndex)) {
+                    modifyTimestamp(td, data) // TODO: fix issue/test
+                }
+            } catch(e) {
+                console.error("HTML Elements were unable to be postprocessed with error message: " + e);
             }
         }
     }
@@ -770,13 +840,13 @@ function setupTablesorter(severityColumnIndices, timestampColumnIndices) {
 
     $("table")
         .tablesorter({
-            selectorSort: '.sort-icon',
+            selectorSort: '.sortIcon',
             headers: configurationOptions,
             sortReset: true
         })
 
         .bind("sortEnd", function(e, t) {
-            applyRowColorStyling()
+            applyRowColorStyling(false)
         });
 }
 
@@ -794,7 +864,7 @@ function removeAllExpandWindows() {
 }
 
 function setupSortIconDisplay() {
-    $('.sort-icon').on('click', function (e) {
+    $('.sortIcon').on('click', function (e) {
         let upArrow = e.currentTarget.children[0];
         let downArrow = e.currentTarget.children[1];
         let upArrowColor = window.getComputedStyle(upArrow).color;
@@ -804,7 +874,7 @@ function setupSortIconDisplay() {
 
         if (upArrowColor == white && downArrowColor == white) {
             // reset all arrow colors
-            let sortIcons = document.getElementsByClassName('sort-icon')
+            let sortIcons = document.getElementsByClassName('sortIcon')
             for (let i = 0; i < sortIcons.length; i++) {
                 let arrows = sortIcons[i].children;
                 for (let j = 0; j < arrows.length; j++) {
@@ -827,59 +897,38 @@ function setupSortIconDisplay() {
     })
 }
 
-function getActiveDropdownMenu() {
-    let activeDropdowns = [];
-    $('.dropdown-menu').each(function(index, elem) {
-        if ($(this).is(":visible")) {
-            activeDropdowns.push($(this));
+function hideDropdowns() {
+    $('.dropdown:visible').toggle(TOGGLE_ANIMATION_MS);
+}
+
+function setupDropdownMenus() {
+    $('.dropdownTrigger').on('click', function(e) {
+        let alreadyOpenedDropdown = $(".dropdown:visible").first();
+        let parent = $(this).closest(".dropdownParent");
+        let dropdown = parent.find(".dropdown");
+
+        if (alreadyOpenedDropdown[0] != dropdown[0]) { // reset all open dropdowns if necessary        
+            hideDropdowns();
         }
+        
+        dropdown.toggle(TOGGLE_ANIMATION_MS);
+        e.stopPropagation();
     })
 
-    if (activeDropdowns.length == 0) return null;
-
-    return activeDropdowns[0];
+    setupDropdownClosing();
 }
 
-function setupDropdownMenu() {
-    $(".filter-icon-container").on('click', function(e) {
-        let activeDropdownMenu = getActiveDropdownMenu();
-        let currentFunctionBar = $(this).closest('.function-bar')[0];
-        let dropdownMenu = $(this).siblings().first();
-        
-        if (activeDropdownMenu != null) {
-            // Close the previously active dropdown:
-            toggleDropdownMenu(activeDropdownMenu);
-
-            // Case: Dropdown Menu was closed through direct button click
-            if (activeDropdownMenu.is(dropdownMenu)) {
-                e.stopPropagation();
-                return;
-            }
-        }
-
-        toggleDropdownMenu(dropdownMenu);
-        e.stopPropagation()
-    });
-}
-
-/* Note: The parameter dropdownMenu has to be a JQuery object */
-function toggleDropdownMenu(dropdownMenu) {
-    dropdownMenu.siblings().first()[0].classList.toggle('border');
-    dropdownMenu.toggle(TOGGLE_ANIMATION_MS);
-}
-
-function setupDropdownMenuOutOfScopeClosing() {
+function setupDropdownClosing() {
     $("html").on('click', function(e){
-        let activeDropdownMenu = getActiveDropdownMenu();
-        if (activeDropdownMenu == null) return;
+        if ($('.dropdown:visible').length == 0) return;
 
-        let targetIsInDropdownMenu = e.target.closest('.dropdown-menu') != null;
-        if (!targetIsInDropdownMenu) toggleDropdownMenu(activeDropdownMenu);
+        let clickWasOutsideOfDropdown = e.target.closest('.dropdown') == null;
+        if (clickWasOutsideOfDropdown) hideDropdowns();
     })
 }
 
 function resetFilterAfterModeChange() {
-    let dropdownMenu = $(this).closest('.dropdown-menu')[0];
+    let dropdownMenu = $(this).closest('.columnFilterDropdown')[0];
     dropdownMenu.children[1].children[0].value = "";
 
         $('tbody .mainTr').filter(function() {
@@ -892,7 +941,7 @@ function toggleFilter() {
 
     let columnIndex = $(this).closest('th').index();
     let filterValue = $(this).val().toLowerCase();
-    let filterMode = $(this).closest('.dropdown-menu')[0].children[0].children[0].value; // TODO: NICE TO HAVE: should probably find a better way to do this
+    let filterMode = $(this).closest('.columnFilterDropdown')[0].children[0].children[0].value; // TODO: NICE TO HAVE: should probably find a better way to do this
     
     $('tbody .mainTr').filter(function() {
         let entry = $(this)[0].children[columnIndex];
@@ -920,7 +969,7 @@ function toggleFilter() {
             $(this).toggle(value.endsWith(filterValue))
         }
 
-        applyRowColorStyling();
+        applyRowColorStyling(false);
     })
 }
 
@@ -941,7 +990,7 @@ function setupInitialFunctionBarPosition() {
 }
 
 function tryGetJSON(potentialJSONString, warn=true) {
-    if (potentialJSONString == "[]" || potentialJSONString == "{}" || potentialJSONString == "") return null; // TODO: find more sophisticated way to prevent dummy json data
+    if (potentialJSONString == "[]" || potentialJSONString == "{}" || potentialJSONString == "" || potentialJSONString == " ") return null; // TODO: find more sophisticated way to prevent dummy json data
 
     try {
         let jsonData = JSON.parse(potentialJSONString);
@@ -1071,16 +1120,18 @@ function resizeColumn(e, startX, column, neighborColumn) {
 }
 
 function setupColumnResizing() {
-    $(".resize-area").on('mousedown', function(e) {
+    let numColumns = getNumVisibleColumns();
+    $(".resizeArea").on('mousedown', function(e) {
         let index = $(this).closest('th').index(); // Index of the current column that is being moved
-        if (index == NUM_COLUMNS - 1) return;
+        if (index == numColumns - 1) return;
 
         let neighborIndex = $(this).closest('th').nextAll(":visible").first().index();
         let column = [];
         let neighborColumn = [];
-        for (let i = 0; i < ROWS.length; i++) {
-            column[i] = ROWS[i].children[index];
-            if (neighborIndex != -1) neighborColumn[i] = ROWS[i].children[neighborIndex];
+        let rows = $("tr").toArray();
+        for (let i = 0; i < rows.length; i++) {
+            column[i] = rows[i].children[index];
+            if (neighborIndex != -1) neighborColumn[i] = rows[i].children[neighborIndex];
         }
 
         let startX = e.pageX; // Track starting position of cursor when drag button is clocked
