@@ -1,7 +1,5 @@
-
 html {
     font-family: 'Source Sans 3', sans-serif, serif;
-    overflow-y: hidden;
 }
 body {
     white-space: nowrap;
@@ -30,20 +28,15 @@ a:hover {
     border: none;
     white-space: nowrap;
     line-height: 15px;
-    width: 1763px; /* = columnWidth * numberOfColumns + 13, where 13 accounts for the width of the vertical scrollbar */
-    max-height: 375px; /* TODO: has to be adjusted to predefined height (e.g. when using an iframe) */
-    min-height: 150px;
-    overflow-x: auto;
-    overflow-y: auto;
+    width: 1763px; /* = columnWidth * numberOfColumns + 13, where 13 accounts for the width of the vertical scrollbar. i.e. 7 * 250 + 13 */
 }
 
 #tableWrapper {
     background-color: rgb(33, 44, 68);
-}
-
-.header-text {
-    width: 150px;
-    transform: scale(0.98, 1.02);
+    max-height: 250px;
+    height: 250px;
+    min-height: 150px;
+    overflow: scroll;
 }
 
 .dataTd, .mainTh, .tablesorter-header {
@@ -76,7 +69,7 @@ a:hover {
     white-space: nowrap;
 }
 
-.header-text {
+.headerText {
     padding: 7px 0px 7px 7px;
     color: white;
     font-size: 14px;
@@ -85,9 +78,11 @@ a:hover {
     z-index: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+    width: 150px;
+    transform: scale(0.98, 1.02);
 }
 
-.function-bar {
+.functionBar {
     background-color: rgb(47, 61, 91);
     width: 80px;
     display: inline-block;
@@ -99,7 +94,7 @@ a:hover {
     transform: translate(-50%, -50%);
 }
 
-.resize-area {
+.resizeArea {
     width: 20px;
     cursor: col-resize;
     text-align: center;
@@ -119,7 +114,7 @@ a:hover {
     float: right;
 }
 
-.sort-icon {
+.sortIcon {
     padding: 7px;
     line-height: 12px;
     letter-spacing: -2px;
@@ -132,13 +127,13 @@ a:hover {
     left: 7px;
 }
 
-.up-arrow, .down-arrow {
+.upArrow, .downArrow {
     font-weight: 400;
     color: white;
     font-size: small;
 }
 
-.filter-icon-container {
+.filterIconContainer {
     position: relative;
     padding: 5px;
     line-height: 16px;
@@ -154,7 +149,7 @@ a:hover {
     left: 7px;
 }
 
-.filter-icon {
+.filterIcon {
     -webkit-transform: rotate(-45deg); 
     -moz-transform: rotate(-45deg); 
     -o-transform: rotate(-45deg);
@@ -179,7 +174,7 @@ thead {
     box-sizing: border-box;
 }
 
-.dropdown-menu {
+.columnFilterDropdown {
     display: none;
     position: absolute;
     background-color: rgb(47, 61, 91);
@@ -193,7 +188,7 @@ thead {
     height: fit-content;
     color: white;
     scale: 1.125;
-    margin-top: 38px;
+    margin-top: 50px;
     font-family: 'Source Sans 3', sans-serif, serif;
 }
 
@@ -235,29 +230,31 @@ hr {
     opacity: 35%;
 }
 
-.check-filter {
+.checkFilter {
     display: table;
 }
 
-.check-filter * {
+.checkFilter * {
     display: table-cell;
     vertical-align: middle;
 }
 
 ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 12px;
+    height: 12px;
 }
 
 ::-webkit-scrollbar-track {
     background: rgb(33, 44, 68);
     border: 5px solid rgb(33, 44, 68);
+    width: 10px;
 }
 
 ::-webkit-scrollbar-thumb {
     background: rgb(94, 112, 153);
     border-radius: 8px;
     border: 3px solid transparent;
+    background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-corner {
@@ -312,19 +309,20 @@ hr {
     height: 20px;
 }
 
-#columnFilter {
+#columnVisibilityWrapper {
     float: left;
     padding: 0;
     position: absolute;
     z-index: 6;
 }
 
-#columnFilterDropdown {
+#columnVisibilityDropdown {
     display: none;
     position: absolute;
     background: white;
     min-width: 200px;
     width: fit-content;
+    max-width: 200px;
     left: 45px;
     top: 5px;
     padding: 10px;
@@ -332,6 +330,13 @@ hr {
     box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.5);
     color: white;
     border: 1px solid white;
+    max-height: 225px;
+    overflow-y: scroll;
+}
+
+label {
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .columnSelect {
@@ -339,7 +344,7 @@ hr {
     line-height: 25px;
 }
 
-#columnFilterButton {
+#columnVisibilityButton {
     font-size: x-large;
     font-weight: 300;
     transform: scale(0.50, 1.0);
