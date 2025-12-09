@@ -80,7 +80,8 @@ function createStaticTableElements() {
 function addTableData(tableData) {
     let domParser = new DOMParser();
     let doc = domParser.parseFromString(tableData, "text/html");
-    let rows = Array.from(doc.body.firstChild.firstChild.children); // TODO: add try block
+    let tbody = doc.getElementsByTagName("tbody")[0];
+    let rows = Array.from(tbody.children);
 
     for (let row of rows) {
         $('#tableBody').append(row);
