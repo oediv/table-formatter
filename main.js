@@ -16,14 +16,6 @@ const FUNCTION_BAR_OFFSET = 40;
 const HEADER_TEXT_WIDTH_RATIO = 4/5; // Ratio in relation to function bar width
 const TOGGLE_ANIMATION_MS = 200;
 
-$(window).on('load', function() {
-    let rowData = document.getElementById("loadDataFrom").innerHTML;
-    const uncleanedData = "<table>" + rowData + "</table>"; // rowData has to be wrapped in a table, otherwise DOMPurify will remove the <tr> tags
-    const cleanedData = DOMPurify.sanitize(uncleanedData, {RETURN_TRUSTED_TYPE: true}); // in all likelihood this is not necessary because the data sanitization should have already happened at a previous point in time. it's a good precaution nonetheless
-    
-    createTable(cleanedData);
-})
-
 function createTable(tableData) {
     createStaticTableElements();
     addTableData(tableData);
