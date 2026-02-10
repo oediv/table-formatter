@@ -28,13 +28,13 @@ function createTable(tableData) {
     setupSortIconDisplay();
     setupDropdownMenus();
     setupFiltering();
-    setupInitialFunctionBarPosition();
     updateColumnWidth();
     setupColumnResizing();
     initializeColumnVisibilityDropdown(COLUMN_NAMES);
     addSelectAllColumnFilterEventListener();
     addColumnFilterCheckboxEventListener(COLUMN_NAMES);
     applyRowStyling();
+    setupInitialFunctionBarPosition(); // it's probably best practice to do this last, in case of other modifications that affect the function bar position
 }
 
 /** This function adds the static, table html elements and functions as a sort of template where both data and further elements are inserted via JS.
@@ -80,8 +80,7 @@ function createStaticTableElements() {
 function addTableData(tableData) {
     let domParser = new DOMParser();
     let doc = domParser.parseFromString(tableData, "text/html");
-    let tbody = doc.getElementsByTagName("tbody")[0];
-    let rows = Array.from(tbody.children);
+    let rows = Array.from(doc.body.firstChild.firstChild.children); // Array from is necessary because the native data structure is an HTML collection which, upon using append(row) will remove the row from the collection, thereby messing up the for loop below.
 
     for (let row of rows) {
         $('#tableBody').append(row);
@@ -188,7 +187,7 @@ function setupRowExpansion() { // TODO: NICE TO HAVE: fix JSON depth expansion l
         firstTd.prepend(button);
     }
 
-    addExpandButtonEventListeners(true);   
+    addExpandButtonEventListeners(true);
 }
 
 /** Users may expand rows and toggle columns (hide/show them) freely. When a row is expanded and all columns of the table are hidden,
@@ -411,6 +410,13 @@ function collapseAllExpansions() {
     })
 }
 
+function addCopyToClipboardButtonEvent(copyButton) {
+    $(copyButton).on('click', function() {
+        let data = $(this).next()[0].value;
+        navigator.clipboard.writeText(data);
+    })
+}
+
 function addExpandButtonEventListeners(firstCall) {
     let buttons = firstCall ? $('.expandButton') : $('.expandButton').filter(':visible'); // this aims to fix issues where the button click is not registered (this behavior is fixed with a page refresh; perhaps this function is called when the state of the buttons is still "hidden")
 
@@ -455,7 +461,7 @@ function addJsonExpansionEvent(jsonButton, row) {
             return;
         }
 
-        let jsonData = $(this).next().next()[0].textContent;
+        let jsonData = $(this).next().next()[0].value;
         expandJson(jsonData, row);
         changeExpandButtonIcon(jsonButton, false);
         prepareJsonExpansion();
@@ -463,7 +469,7 @@ function addJsonExpansionEvent(jsonButton, row) {
 }
 
 /**
- * 
+ * This function will take data and a previously created table to create a new row (and separator element) and add it to the table.
  * @param dataTd - A JQuery object of a <dataTd>
  * @param table - The expansion table that the entry will be added into.
  * @param indexOfPrevEntry - The relative index of the previous entry within the expansion.
@@ -474,9 +480,9 @@ function addExpandedRowEntry(dataTd, table, indexOfPrevEntry) {
     let i = dataTd.index();
     
     let key = columnNames[i];
-    let childNodes = td.cloneNode(true).childNodes;
-    let elem = extractElementFromChildNodes(childNodes);
-    let nestedEntry = addNestedEntry(key, elem, BASE_INDENT, style=td.style, title=td.title);
+    let childNodes = td.cloneNode(true).childNodes; // this is necessary because we can't just access td.textContent (this is the case because columns that contain a button will count that button as part of the textContent)
+    let text = extractTextFromChildNodes(childNodes);
+    let nestedEntry = addNestedEntry(key, text, BASE_INDENT, style=td.style);
     let hr = document.createElement('hr');
     hr.style.marginLeft = (BASE_INDENT - BASE_INDENT_OFFSET) + "px";
     if (dataTd.is(":last-child")) hr.style.marginBottom = "0px";
@@ -513,7 +519,7 @@ function prepareJsonExpansion() {
         let row = dataValue.parentElement;
         if (row.getElementsByClassName("jsonButton").length > 0) continue;
 
-        let potentialJsonString = dataValue.textContent;
+        let potentialJsonString = dataValue.value;
         let jsonData = tryGetJSON(potentialJsonString, warn=false);
         let valueIsJson = jsonData != null;
 
@@ -536,17 +542,27 @@ function prepareJsonExpansion() {
  * Usually, a column contains only one element: either text or an a-element. However, if the column contains
  * json data, an additional button element is added to the value in order to make it clickable/expandable.
  * This function simply filters out such buttons.
+ * NOTE: To access the text of the column correctly its childNodes are accessed. These childNodes are a NodeList,
+ * which has the quirk that its maximum size per element (in some browsers presumeably) is 65536 or 2^16. If an
+ * element exceeds this amount, an additional element in the NodeList is created. I.e a string containing 70000
+ * characters gets broken up into two elements in the NodeList with sizes 65536 and 4464. 
  * 
- * childNodes: a childNodes element that is either of the form [text], [a], or [button, text]
+ * @param childNodes - a childNodes element that is usually of the form [text], [a], [button, text] or in some cases having more than just one text element.
  * */
-function extractElementFromChildNodes(childNodes) {
+function extractTextFromChildNodes(childNodes) {
     if (childNodes.length == 0) return null;
 
-    if (childNodes.length == 2 && childNodes[0].type == "button") {
-        return childNodes[1];
+    let text = "";
+    for (let node of childNodes) {
+        if (typeof node == "button") continue; // filter out expansion buttons
+
+        let childNodeText = node.nodeValue;
+        if (typeof childNodeText != "string") continue; // failsafe; this condition should never be true, but this check here is just in case 
+
+        text += childNodeText;
     }
 
-    return childNodes[0];
+    return text;
 }
 
 function expandJson(jsonString, row) {
@@ -562,9 +578,7 @@ function expandJson(jsonString, row) {
     for (let key of Object.keys(jsonData)) {
         let value = jsonData[key];
         let text = typeof value === "object" ? JSON.stringify(value) : value;
-        let elem = document.createTextNode(text);
-
-        let nestedEntry = addNestedEntry(key, elem, indent);
+        let nestedEntry = addNestedEntry(key, text, indent, null);
         let hr = document.createElement('hr');
         hr.style.marginLeft = (indent - 15) + "px";
         
@@ -599,7 +613,7 @@ function prepareExpandTable() {
     return [tr, $(nestedTable)];
 }
 
-function addNestedEntry(key, elem, indent, style=null, title=null) {
+function addNestedEntry(key, text, indent, style=null) {
     let nestedEntry = document.createElement('div');
     let indentElement = document.createElement('div');
     let dataKey = document.createElement('div');
@@ -608,20 +622,45 @@ function addNestedEntry(key, elem, indent, style=null, title=null) {
     nestedEntry.classList.add("expandedRow");
     nestedEntry.style="display: flex; height: 20px; line-height: 20px;";
 
-    indentElement.style.width = indent + "px";    
+    indentElement.style.width = indent + "px";
     dataKey.textContent = key;
-    dataKey.style = "width: 200px; margin-right: 30px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: small; font-weight: bold; display: flex; align-items: center;";        
+    dataKey.style = "width: 200px; margin-right: 30px; overflow: hidden; text-overflow: clip; white-space: nowrap; font-size: small; font-weight: bold; display: flex; align-items: center;";        
 
-    if (elem != null) dataValue.appendChild(elem);
+
+    let textOverflows = false;
+    if (text != null) {
+        let maxChars = 140;
+        textOverflows = text.length > maxChars;
+        let visibleText = textOverflows ? text.substring(0, maxChars) + "..." : text;
+        dataValue.appendChild(document.createTextNode(visibleText));
+    }
     dataValue.classList.add("expandedDataValue");
-    dataValue.style = "width: 500px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: small; display: block;";
+    dataValue.style = "width: 1000px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: small; display: block;";
+    dataValue.value = text;
 
     if (style != null) dataValue.style.color = style.color;
-    if (title != null) dataValue.title = title;
-    
+
+    let copyToClipboardButton;
+    if (textOverflows) {
+        dataValue.title = text;
+    }
+
+    let rowContainsJson = tryGetJSON(text, false) != null; // TODO: in the expansion process, this is called multiple times. it would be good to centralize this to improve redundancy
+    if (!rowContainsJson) {
+        copyToClipboardButton = document.createElement('button');
+        copyToClipboardButton.type = "button";
+        copyToClipboardButton.classList.add("copyButton");
+        copyToClipboardButton.textContent = "\u{1f5cd}";
+        dataKey.style.width = 175 + "px"; // TODO: move hardcoded value somewhere else
+
+        addCopyToClipboardButtonEvent(copyToClipboardButton)
+    }
+
     nestedEntry.appendChild(indentElement);
     nestedEntry.appendChild(dataKey);
+    if (copyToClipboardButton != undefined) nestedEntry.appendChild(copyToClipboardButton);
     nestedEntry.appendChild(dataValue);
+    
 
     return nestedEntry;
 }
@@ -763,32 +802,26 @@ function postprocessHtmlElements(severityColumnIndices, timestampColumnIndices, 
     for (let i = 0; i < rows.length; i++) {
         let tr = rows[i];
         for (let columnIndex = 0; columnIndex < numColumns; columnIndex++) {
-            try {
-                let td = i == 0 ? tr.children[columnIndex].children[0] : tr.children[columnIndex];
-                if (td == undefined || td.textContent == undefined) continue;
-                
-                let childNode = td.childNodes[td.childNodes.length - 1];
-                if (childNode == undefined) continue; 
-                let data = childNode.textContent;
-                
-                // Add text preview on hover for long text:
-                if (data.length >= 30 && !td.classList.contains("mainTh")) { // mainTh left out due to its textContent being irrelevant
-                    td.title = data;
-                }
+            let td = i == 0 ? tr.children[columnIndex].children[0] : tr.children[columnIndex];
+            if (td == undefined || td.textContent == undefined) continue;
+            
+            let data = td.childNodes[td.childNodes.length - 1].textContent;
+            
+            // Add text preview on hover for long text:
+            if (data.length >= 30 && !td.classList.contains("mainTh")) { // mainTh left out due to its textContent being irrelevant
+                td.title = data;
+            }
 
-                if (i == 0) continue;
+            if (i == 0) continue;
 
-                // Add styling if this is severity data:
-                if (severityColumnIndices.includes(columnIndex)) {
-                    td.style = getSeverityColor(data);
-                }
+            // Add styling if this is severity data:
+            if (severityColumnIndices.includes(columnIndex)) {
+                td.style = getSeverityColor(data);
+            }
 
-                // Make the timestamp more readable if it's timestamp data:
-                if (timestampColumnIndices.includes(columnIndex)) {
-                    modifyTimestamp(td, data) // TODO: fix issue/test
-                }
-            } catch(e) {
-                console.error("HTML Elements were unable to be postprocessed with error message: " + e);
+            // Make the timestamp more readable if it's timestamp data:
+            if (timestampColumnIndices.includes(columnIndex)) {
+                modifyTimestamp(td, data) // TODO: fix issue/test
             }
         }
     }
@@ -987,7 +1020,6 @@ function tryGetJSON(potentialJSONString, warn=true) {
 
     try {
         let jsonData = JSON.parse(potentialJSONString);
-
         if (jsonData && typeof jsonData === "object") return jsonData;
         else return null;
     } catch(e) {

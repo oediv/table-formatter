@@ -33,8 +33,6 @@ a:hover {
 
 #tableWrapper {
     background-color: rgb(33, 44, 68);
-    max-height: 250px;
-    height: 250px;
     min-height: 150px;
     overflow: scroll;
 }
@@ -298,6 +296,19 @@ hr {
     font-weight: bolder;
     padding: 0px;
     color: #2b75ff;
+}
+
+.copyButton {
+    background-color: transparent;
+    border: none;
+    color: white;
+    cursor: pointer;
+    width: 20px;
+    height: 20px;
+    font-size: 13px;
+    margin-right: 5px;
+    font-weight: bolder;
+    padding: 0px;
 }
 
 .nestedTable {
