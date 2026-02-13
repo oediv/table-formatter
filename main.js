@@ -78,12 +78,18 @@ function createStaticTableElements() {
  * @param tableData - Sanitized HTML table data. The data is enclosed in a table, which has a tbody and tr elements (the data must lie in the tr tags).
  */
 function addTableData(tableData) {
-    let domParser = new DOMParser();
-    let doc = domParser.parseFromString(tableData, "text/html");
-    let rows = Array.from(doc.body.firstChild.firstChild.children); // Array from is necessary because the native data structure is an HTML collection which, upon using append(row) will remove the row from the collection, thereby messing up the for loop below.
+    try {
+        let domParser = new DOMParser();
+        let doc = domParser.parseFromString(tableData, "text/html");
 
-    for (let row of rows) {
-        $('#tableBody').append(row);
+        let tbody = doc.getElementsByTagName("tbody")[0];
+        let rows = Array.from(tbody.children);
+
+        for (let row of rows) {
+            $('#tableBody').append(row);
+        }
+    } catch(e) {
+        console.error("Custom Widget: function addTableData() could not load the data and failed with the following error message: \n", e);
     }
 }
 
