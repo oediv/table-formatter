@@ -298,19 +298,6 @@ hr {
     color: #2b75ff;
 }
 
-.copyButton {
-    background-color: transparent;
-    border: none;
-    color: white;
-    cursor: pointer;
-    width: 20px;
-    height: 20px;
-    font-size: 13px;
-    margin-right: 5px;
-    font-weight: bolder;
-    padding: 0px;
-}
-
 .nestedTable {
     background-color: rgb(25, 36, 59);
 }

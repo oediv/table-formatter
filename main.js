@@ -416,13 +416,6 @@ function collapseAllExpansions() {
     })
 }
 
-function addCopyToClipboardButtonEvent(copyButton) {
-    $(copyButton).on('click', function() {
-        let data = $(this).next()[0].value;
-        navigator.clipboard.writeText(data);
-    })
-}
-
 function addExpandButtonEventListeners(firstCall) {
     let buttons = firstCall ? $('.expandButton') : $('.expandButton').filter(':visible'); // this aims to fix issues where the button click is not registered (this behavior is fixed with a page refresh; perhaps this function is called when the state of the buttons is still "hidden")
 
@@ -646,27 +639,13 @@ function addNestedEntry(key, text, indent, style=null) {
 
     if (style != null) dataValue.style.color = style.color;
 
-    let copyToClipboardButton;
     if (textOverflows) {
         dataValue.title = text;
     }
 
-    let rowContainsJson = tryGetJSON(text, false) != null; // TODO: in the expansion process, this is called multiple times. it would be good to centralize this to improve redundancy
-    if (!rowContainsJson) {
-        copyToClipboardButton = document.createElement('button');
-        copyToClipboardButton.type = "button";
-        copyToClipboardButton.classList.add("copyButton");
-        copyToClipboardButton.textContent = "\u{1f5cd}";
-        dataKey.style.width = 175 + "px"; // TODO: move hardcoded value somewhere else
-
-        addCopyToClipboardButtonEvent(copyToClipboardButton)
-    }
-
     nestedEntry.appendChild(indentElement);
     nestedEntry.appendChild(dataKey);
-    if (copyToClipboardButton != undefined) nestedEntry.appendChild(copyToClipboardButton);
-    nestedEntry.appendChild(dataValue);
-    
+    nestedEntry.appendChild(dataValue);    
 
     return nestedEntry;
 }
