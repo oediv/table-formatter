@@ -751,7 +751,7 @@ function extractSeverityColumns(columnNames) {
         for (let i = 1; i < rows.length; i++) {
             let currentColumn = rows[i].children[severityColumnCandidate];
             if (!td || !td.textContent.trim()) continue;
-            
+
             let data = currentColumn.textContent;
             
             if (!isSeverityData(data)) {
@@ -788,7 +788,7 @@ function postprocessHtmlElements(severityColumnIndices, timestampColumnIndices, 
         let tr = rows[i];
         for (let columnIndex = 0; columnIndex < numColumns; columnIndex++) {
             let td = i == 0 ? tr.children[columnIndex].children[0] : tr.children[columnIndex];
-            if (td == undefined || td.textContent == undefined) continue;
+            if (!td || !td.textContent.trim()) continue;            
             
             let data = td.childNodes[td.childNodes.length - 1].textContent;
             
@@ -957,6 +957,8 @@ function toggleFilter() {
     $('tbody .mainTr').filter(function() {
         let entry = $(this)[0].children[columnIndex];
         let value;
+        
+        if (!entry.childNodes[0]) return;
         
         if (entry.childNodes[0].type == "button") {
             value = entry.childNodes[1].textContent.toLowerCase();
