@@ -13,7 +13,7 @@ const BASE_INDENT = 50; // px
 const BASE_INDENT_OFFSET = 25;
 const MIN_TABLE_HEADER_WIDTH = 125;
 const FUNCTION_BAR_OFFSET = 40;
-const HEADER_TEXT_WIDTH_RATIO = 4/5; // Ratio in relation to function bar width
+const HEADER_TEXT_WIDTH_RATIO = 4 / 5; // Ratio in relation to function bar width
 const TOGGLE_ANIMATION_MS = 200;
 
 function createTable(tableData) {
@@ -35,6 +35,8 @@ function createTable(tableData) {
     addColumnFilterCheckboxEventListener(COLUMN_NAMES);
     applyRowStyling();
     setupInitialFunctionBarPosition(); // it's probably best practice to do this last, in case of other modifications that affect the function bar position
+    setupCopyDropdown()
+
 }
 
 /** This function adds the static, table html elements and functions as a sort of template where both data and further elements are inserted via JS.
@@ -43,6 +45,20 @@ function createTable(tableData) {
  */
 function createStaticTableElements() {
     const tableHtml = `
+<div id="copyContainer" style="margin-bottom:10px; position:relative;">
+  <button id="copyDropdownBtn" class="dropdownTrigger">⧉ Copy</button>
+
+  <div id="copyDropdown" class="dropdown"
+       style="display:none; position:absolute; background:#1d1d2e; padding:6px; border:1px solid #444; border-radius:4px; min-width: 200px;">
+    <div class="copyOption" data-copy="text"          style="cursor:pointer; padding:4px;">📄 Copy as Text</div>
+    <div class="copyOption" data-copy="csv"           style="cursor:pointer; padding:4px;">🧾 Copy as CSV</div>
+    <div class="copyOption" data-copy="download csv"  style="cursor:pointer; padding:4px;">🧾 Download CSV</div>
+    <hr style="border-color:#333; margin:6px 0;">
+    <div class="copyOption" data-copy="png-full"          style="cursor:pointer; padding:4px;">🖼️ Copy as PNG (Full table)</div>
+    <div class="copyOption" data-copy="download png full" style="cursor:pointer; padding:4px;">⬇️ Download PNG (Full table)</div>
+    <div class="copyOption" data-copy="download jpg full" style="cursor:pointer; padding:4px;">⬇️ Download JPG (Full table)</div>
+  </div>
+</div>
         <div>
             <div id="columnVisibilityWrapper" class="dropdownParent">
                 <button id="columnVisibilityButton" class="dropdownTrigger">&#66022;&#66022;&#66022;</button>
@@ -61,15 +77,17 @@ function createStaticTableElements() {
                 <span id="numRecordsText"></span>
             </div>
             <div id="tableWrapper">
-            <table id="mainTable" cellspacing="0" cellpadding="0" class="tablesorter">
-                <thead><tr id="tableHeaderRow"></tr></thead>
-                
-                <tbody id="tableBody">
+                <table id="mainTable" cellspacing="0" cellpadding="0" class="tablesorter">
+                    <thead>
+                        <tr id="tableHeaderRow"></tr>
+                    </thead>
 
-                </tbody>
-            </table>
-        </div>
-    `
+                    <tbody id="tableBody">
+
+                    </tbody>
+                </table>
+            </div>
+            `
     document.body.innerHTML = tableHtml; // using innerHTML here is fine because no user input is used
 }
 
@@ -88,7 +106,7 @@ function addTableData(tableData) {
         for (let row of rows) {
             $('#tableBody').append(row);
         }
-    } catch(e) {
+    } catch (e) {
         console.error("Custom Widget: function addTableData() could not load the data and failed with the following error message: \n", e);
     }
 }
@@ -142,12 +160,12 @@ function applyRowColorStyling(firstCall) {
 /** This function applies the row styling, which includes the alternating row styling (by calling applyRowColorStyling) and a brightness filter on hover.*/
 function applyRowStyling() {
     applyRowColorStyling(true);
-    
+
     $(".mainTr, .nestedEntry").hover(
-        function() {
+        function () {
             $(this).css("filter", "brightness(117%)");
         },
-        function() {
+        function () {
             $(this).css("filter", "brightness(100%)")
         }
     );
@@ -174,12 +192,12 @@ function createRowExpandButton(expanded) {
     button.type = "button";
     button.classList.add("expandButton");
     button.textContent = "\u3009";
-    
+
     if (expanded) {
         button.style.transform = "rotate(90deg)";
         button.style.paddingLeft = "5px";
     }
-    
+
     return button;
 }
 
@@ -199,8 +217,8 @@ function setupRowExpansion() { // TODO: NICE TO HAVE: fix JSON depth expansion l
 /** Users may expand rows and toggle columns (hide/show them) freely. When a row is expanded and all columns of the table are hidden,
  * and then re-shown, the expanded row is reset. This function also resets the expansion buttons. */
 function resetRowExpansionButtons() {
-    $('.mainTr').each(function() {
-        $(this).children().each(function() {
+    $('.mainTr').each(function () {
+        $(this).children().each(function () {
             if ($(this)[0].childNodes.length == 2) {
                 let button = $(this)[0].childNodes[0];
                 $(this)[0].removeChild(button);
@@ -221,8 +239,8 @@ function addRowExpansionButtonToFirstVisibleColumn() {
     }
 
     let targetColumnIndex = targetColumn.index();
-    $('.mainTr').each(function() {
-        let expanded = $(this).next().is(".expansionWindow"); 
+    $('.mainTr').each(function () {
+        let expanded = $(this).next().is(".expansionWindow");
         let button = createRowExpandButton(expanded);
         $(this).children(":visible").first()[0].prepend(button);
     })
@@ -235,7 +253,7 @@ function addRowExpansionButtonToFirstVisibleColumn() {
 function getColumnNames() {
     let columnNames = [];
 
-    $('.mainTr').first().children().each(function() {
+    $('.mainTr').first().children().each(function () {
         columnNames.push($(this)[0].getAttribute('data-column'))
     })
 
@@ -251,9 +269,9 @@ function initializeColumnVisibilityDropdown(columnNames) {
 
         let columnFilterElement = document.createElement('div');
         columnFilterElement.classList.add("columnSelect");
-        
+
         let checkbox = document.createElement("input");
-        let checkboxId = "columnCheckbox" + (i+1);
+        let checkboxId = "columnCheckbox" + (i + 1);
         checkbox.classList.add("columnFilterCheckbox");
         checkbox.setAttribute("type", "checkbox");
         checkbox.setAttribute("id", checkboxId);
@@ -284,7 +302,7 @@ function toggleAllColumns(showColumns) {
 
 /** This function updates the display when a column is toggled (hidden/shown) in the column visibility dropdown. */
 function toggleColumnDisplay(index, showColumn) {
-    $('tr:not(.expansionWindow)').each(function() {
+    $('tr:not(.expansionWindow)').each(function () {
         let trColumn = $(this).children().eq(index);
 
         if (showColumn) trColumn.show();
@@ -300,9 +318,9 @@ function toggleColumnDisplay(index, showColumn) {
  * @param showColumn - Whether the column should be hidden or shown.
 **/
 function toggleColumn(index, showColumn) {
-    let firstVisibleColumn = $('.mainTr').first().children(":visible").first();        
+    let firstVisibleColumn = $('.mainTr').first().children(":visible").first();
     toggleColumnDisplay(index, showColumn);
-    
+
     // Update SelectAll checkbox tick when necessary:
     if ($('tr').first().children(":visible").length == 0 || $('tr').first().children(":hidden").length == 0) {
         $('#selectAllCheckbox')[0].checked = showColumn;
@@ -311,9 +329,9 @@ function toggleColumn(index, showColumn) {
     // Adjust column width:
     let visibleNumColumns = $('tr').eq(0).children(":visible").length;
     if (visibleNumColumns > 4) updateColumnWidth();
-    
+
     if (firstVisibleColumn.index() < index) return; // If first visible column is unaffected, the expansion button can stay where it is
-    
+
     resetRowExpansionButtons();
 }
 
@@ -321,7 +339,7 @@ function toggleColumn(index, showColumn) {
  * toggled and potential expanded rows will be updated (i.e. the column will be hidden/shown in the expansion as well).
 */
 function addColumnFilterCheckboxEventListener(columnNames) {
-    $('.columnFilterCheckbox').change(function() {
+    $('.columnFilterCheckbox').change(function () {
         let index = parseInt($(this)[0].getAttribute("index"));
         let checked = $(this)[0].checked;
         toggleColumn(index, checked);
@@ -337,11 +355,11 @@ function addColumnFilterCheckboxEventListener(columnNames) {
 
 /** This function works similarly to the addColumnFilterCheckboxEventListener() function. */
 function addSelectAllColumnFilterEventListener() {
-    $('#selectAllCheckbox').change(function() {
+    $('#selectAllCheckbox').change(function () {
         let check = this.checked;
         toggleAllColumns(check);
 
-        $('.columnFilterCheckbox').each(function() {
+        $('.columnFilterCheckbox').each(function () {
             this.checked = check;
         });
 
@@ -353,10 +371,10 @@ function addSelectAllColumnFilterEventListener() {
 
 /* This function returns the relative index of the previous entry (within the expansion window). */
 function getIndexOfPrevEntry(columnName, columnNames) {
-    let indexOfColumn = columnNames.indexOf(columnName);    
+    let indexOfColumn = columnNames.indexOf(columnName);
     let expandedColumnIndices = [];
 
-    $('.expandTable').first().children(":nth-child(even)").each(function(index, element) {
+    $('.expandTable').first().children(":nth-child(even)").each(function (index, element) {
         let currColumnName = element.children[1].textContent;
         expandedColumnIndices.push(columnNames.indexOf(currColumnName));
     })
@@ -371,7 +389,7 @@ function getIndexOfPrevEntry(columnName, columnNames) {
         let columnIndex = expandedColumnIndices[i];
 
         if (columnIndex > indexOfColumn) {
-            return i-1;
+            return i - 1;
         }
     }
 
@@ -382,11 +400,11 @@ function addColumnToAllExpansions(columnName, columnNames) {
     let visibleDataTds = $('.expansionWindow').prev().children(":visible");
     let indexOfPrevEntry = getIndexOfPrevEntry(columnName, columnNames);
 
-    visibleDataTds.each(function() {
+    visibleDataTds.each(function () {
         let dataTd = $(this);
         let targetColumnName = $(this)[0].getAttribute("data-column");
         let nestedTable = $(this).closest('.mainTr').next().children().first().children();
-        
+
         if (columnName == targetColumnName) {
             addExpandedRowEntry(dataTd, nestedTable, indexOfPrevEntry);
         }
@@ -394,7 +412,7 @@ function addColumnToAllExpansions(columnName, columnNames) {
 }
 
 function removeColumnFromAllExpansions(targetColumnName) {
-    $('.expandedRow').each(function() {
+    $('.expandedRow').each(function () {
         let columnName = $(this)[0].children[1].textContent;
 
         if (columnName == targetColumnName) {
@@ -405,13 +423,13 @@ function removeColumnFromAllExpansions(targetColumnName) {
 }
 
 function addColumnVisibilityDropdownEventListener() {
-    $('#columnVisibilityButton').on('click', function(e) {
+    $('#columnVisibilityButton').on('click', function (e) {
         $(this).next().toggle(TOGGLE_ANIMATION_MS);
     })
 }
 
 function collapseAllExpansions() {
-    $('.expansionWindow').each(function() {
+    $('.expansionWindow').each(function () {
         $(this)[0].remove();
     })
 }
@@ -419,7 +437,7 @@ function collapseAllExpansions() {
 function addExpandButtonEventListeners(firstCall) {
     let buttons = firstCall ? $('.expandButton') : $('.expandButton').filter(':visible'); // this aims to fix issues where the button click is not registered (this behavior is fixed with a page refresh; perhaps this function is called when the state of the buttons is still "hidden")
 
-    buttons.on('click', function() {
+    buttons.on('click', function () {
         let expandButton = $(this)[0];
         let trObj = $(this).closest('tr');
         let index = $('.mainTr').index(trObj);
@@ -451,7 +469,7 @@ function getChildExpansion(row) {
  * possible here as well and might simplify the collapsing logic.
  */
 function addJsonExpansionEvent(jsonButton, row) {
-    $(jsonButton).on('click', function() {
+    $(jsonButton).on('click', function () {
         let isExpanded = false;
         let childExpansion = getChildExpansion(row);
         if (childExpansion != null) { // case: collapse
@@ -477,11 +495,11 @@ function addExpandedRowEntry(dataTd, table, indexOfPrevEntry) {
     let columnNames = getColumnNames(); // this is a special case where passing columnNames as a parameter is unfeasible due to long chain of function calls.
     let td = dataTd[0];
     let i = dataTd.index();
-    
+
     let key = columnNames[i];
     let childNodes = td.cloneNode(true).childNodes; // this is necessary because we can't just access td.textContent (this is the case because columns that contain a button will count that button as part of the textContent)
     let text = extractTextFromChildNodes(childNodes);
-    let nestedEntry = addNestedEntry(key, text, BASE_INDENT, style=td.style);
+    let nestedEntry = addNestedEntry(key, text, BASE_INDENT, style = td.style);
     let hr = document.createElement('hr');
     hr.style.marginLeft = (BASE_INDENT - BASE_INDENT_OFFSET) + "px";
     if (dataTd.is(":last-child")) hr.style.marginBottom = "0px";
@@ -499,7 +517,7 @@ function addExpandedRowEntry(dataTd, table, indexOfPrevEntry) {
 function expandRow(trObj, index) {
     let [wrapper, nestedTable] = prepareExpandTable(index);
 
-    $(".mainTr").eq(index).children(":visible").each(function() {
+    $(".mainTr").eq(index).children(":visible").each(function () {
         addExpandedRowEntry($(this), nestedTable, null);
     })
 
@@ -519,7 +537,7 @@ function prepareJsonExpansion() {
         if (row.getElementsByClassName("jsonButton").length > 0) continue;
 
         let potentialJsonString = dataValue.value;
-        let jsonData = tryGetJSON(potentialJsonString, warn=false);
+        let jsonData = tryGetJSON(potentialJsonString, warn = false);
         let valueIsJson = jsonData != null;
 
         if (valueIsJson) {
@@ -535,7 +553,7 @@ function prepareJsonExpansion() {
         }
     }
 }
-    
+
 /**
  * This function is used to extract the column information during the row expansion process.
  * Usually, a column contains only one element: either text or an a-element. However, if the column contains
@@ -567,8 +585,8 @@ function extractTextFromChildNodes(childNodes) {
 function expandJson(jsonString, row) {
     let jsonData = tryGetJSON(jsonString); // TODO: NICE TO HAVE: right now the approach is: check if data is json => if yes, add it as textContent => on click, take textContent and turn it back into JSON. this is less than ideal
     let parent = row.parentElement;
-    let parentIndent = parseInt(row.children[0].style.width, 10); 
-    let indent = parentIndent + 2*BASE_INDENT;
+    let parentIndent = parseInt(row.children[0].style.width, 10);
+    let indent = parentIndent + 2 * BASE_INDENT;
     let nextRow = row.nextSibling.nextSibling;
     let wrapper = document.createElement('div');
     wrapper.classList.add("childExpansion");
@@ -580,7 +598,7 @@ function expandJson(jsonString, row) {
         let nestedEntry = addNestedEntry(key, text, indent, null);
         let hr = document.createElement('hr');
         hr.style.marginLeft = (indent - 15) + "px";
-        
+
         wrapper.appendChild(nestedEntry);
         wrapper.appendChild(hr);
 
@@ -588,7 +606,7 @@ function expandJson(jsonString, row) {
     }
 
     parent.insertBefore(wrapper, nextRow);
-    
+
 }
 
 function prepareExpandTable() {
@@ -597,7 +615,7 @@ function prepareExpandTable() {
     let td = document.createElement('td');
     let nestedTable = document.createElement('div');
     let topSpacing = document.createElement('div');
-    
+
     let numColumns = $("tr").first()[0].children.length;
     td.colSpan = numColumns;
     tr.classList.add("expansionWindow");
@@ -612,18 +630,18 @@ function prepareExpandTable() {
     return [tr, $(nestedTable)];
 }
 
-function addNestedEntry(key, text, indent, style=null) {
+function addNestedEntry(key, text, indent, style = null) {
     let nestedEntry = document.createElement('div');
     let indentElement = document.createElement('div');
     let dataKey = document.createElement('div');
     let dataValue = document.createElement('div');
 
     nestedEntry.classList.add("expandedRow");
-    nestedEntry.style="display: flex; height: 20px; line-height: 20px;";
+    nestedEntry.style = "display: flex; height: 20px; line-height: 20px;";
 
     indentElement.style.width = indent + "px";
     dataKey.textContent = key;
-    dataKey.style = "width: 200px; margin-right: 30px; overflow: hidden; text-overflow: clip; white-space: nowrap; font-size: small; font-weight: bold; display: flex; align-items: center;";        
+    dataKey.style = "width: 200px; margin-right: 30px; overflow: hidden; text-overflow: clip; white-space: nowrap; font-size: small; font-weight: bold; display: flex; align-items: center;";
 
 
     let textOverflows = false;
@@ -645,7 +663,7 @@ function addNestedEntry(key, text, indent, style=null) {
 
     nestedEntry.appendChild(indentElement);
     nestedEntry.appendChild(dataKey);
-    nestedEntry.appendChild(dataValue);    
+    nestedEntry.appendChild(dataValue);
 
     return nestedEntry;
 }
@@ -664,7 +682,7 @@ function updateColumnWidth() {
 
     $(".dataTd").css("width", "" + columnWidth + "px");
     $(".dataTd").css("min-width", "" + columnWidth + "px");
-    
+
     $(".tablesorter-header").css("width", "" + columnWidth + "px");
     $(".tablesorter-header").css("min-width", "" + columnWidth + "px");
 }
@@ -698,7 +716,7 @@ function setupTableHeaders(columnNames) {
                     <div class="separator">|</div>
                 </div>
             </div>`;
-    
+
     let tableHeaderRow = document.getElementById("tableHeaderRow");
     for (let i = 0; i < columnNames.length; i++) {
         let originalColumnName = columnNames[i];
@@ -714,7 +732,7 @@ function setupTableHeaders(columnNames) {
 
 function setupRecordsDisplay() {
     let numRecords = $('.mainTr').length;
-    
+
     document.getElementById("numRecords").textContent = numRecords;
     document.getElementById("numRecordsText").textContent = numRecords == 1 ? "Record Found" : "Records Found";
 }
@@ -753,7 +771,7 @@ function extractSeverityColumns(columnNames) {
             if (!td || !td.textContent.trim()) continue;
 
             let data = currentColumn.textContent;
-            
+
             if (!isSeverityData(data)) {
                 allEntriesAreSeverities = false;
                 break;
@@ -788,10 +806,10 @@ function postprocessHtmlElements(severityColumnIndices, timestampColumnIndices, 
         let tr = rows[i];
         for (let columnIndex = 0; columnIndex < numColumns; columnIndex++) {
             let td = i == 0 ? tr.children[columnIndex].children[0] : tr.children[columnIndex];
-            if (!td || !td.textContent.trim()) continue;            
-            
+            if (!td || !td.textContent.trim()) continue;
+
             let data = td.childNodes[td.childNodes.length - 1].textContent;
-            
+
             // Add text preview on hover for long text:
             if (data.length >= 30 && !td.classList.contains("mainTh")) { // mainTh left out due to its textContent being irrelevant
                 td.title = data;
@@ -816,10 +834,10 @@ function setupTablesorter(severityColumnIndices, timestampColumnIndices) {
     // Add custom severity parser
     $.tablesorter.addParser({
         id: 'severity',
-        is: function(str) {
+        is: function (str) {
             return false;
         },
-        format: function(str) {
+        format: function (str) {
             let severities = {
                 "critical": 0,
                 "high": 1,
@@ -842,11 +860,11 @@ function setupTablesorter(severityColumnIndices, timestampColumnIndices) {
     let configurationOptions = {}
 
     for (let severityColumnIndex of severityColumnIndices) {
-        configurationOptions[severityColumnIndex] = {sorter: 'severity'};
+        configurationOptions[severityColumnIndex] = { sorter: 'severity' };
     }
 
     for (let timestampColumnIndex of timestampColumnIndices) {
-        configurationOptions[timestampColumnIndex] = {sorter: 'text'};
+        configurationOptions[timestampColumnIndex] = { sorter: 'text' };
     }
 
     $("table")
@@ -856,7 +874,7 @@ function setupTablesorter(severityColumnIndices, timestampColumnIndices) {
             sortReset: true
         })
 
-        .bind("sortEnd", function(e, t) {
+        .bind("sortEnd", function (e, t) {
             applyRowColorStyling(false)
         });
 }
@@ -867,7 +885,7 @@ function setupTablesorter(severityColumnIndices, timestampColumnIndices) {
 function removeAllExpandWindows() {
     let allExpansionWindows = $(".expansionWindow");
 
-    $(".expansionWindow").each(function() {
+    $(".expansionWindow").each(function () {
         let button = $(this).prev().children().first()[0].childNodes[0];
         changeExpandButtonIcon(button, true);
         $(this).remove();
@@ -913,7 +931,7 @@ function hideDropdowns() {
 }
 
 function setupDropdownMenus() {
-    $('.dropdownTrigger').on('click', function(e) {
+    $('.dropdownTrigger').on('click', function (e) {
         let alreadyOpenedDropdown = $(".dropdown:visible").first();
         let parent = $(this).closest(".dropdownParent");
         let dropdown = parent.find(".dropdown");
@@ -921,7 +939,7 @@ function setupDropdownMenus() {
         if (alreadyOpenedDropdown[0] != dropdown[0]) { // reset all open dropdowns if necessary        
             hideDropdowns();
         }
-        
+
         dropdown.toggle(TOGGLE_ANIMATION_MS);
         e.stopPropagation();
     })
@@ -930,7 +948,7 @@ function setupDropdownMenus() {
 }
 
 function setupDropdownClosing() {
-    $("html").on('click', function(e){
+    $("html").on('click', function (e) {
         if ($('.dropdown:visible').length == 0) return;
 
         let clickWasOutsideOfDropdown = e.target.closest('.dropdown') == null;
@@ -942,7 +960,7 @@ function resetFilterAfterModeChange() {
     let dropdownMenu = $(this).closest('.columnFilterDropdown')[0];
     dropdownMenu.children[1].children[0].value = "";
 
-        $('tbody .mainTr').filter(function() {
+    $('tbody .mainTr').filter(function () {
         $(this).toggle(true);
     })
 }
@@ -953,13 +971,13 @@ function toggleFilter() {
     let columnIndex = $(this).closest('th').index();
     let filterValue = $(this).val().toLowerCase();
     let filterMode = $(this).closest('.columnFilterDropdown')[0].children[0].children[0].value; // TODO: NICE TO HAVE: should probably find a better way to do this
-    
-    $('tbody .mainTr').filter(function() {
+
+    $('tbody .mainTr').filter(function () {
         let entry = $(this)[0].children[columnIndex];
         let value;
-        
+
         if (!entry.childNodes[0]) return;
-        
+
         if (entry.childNodes[0].type == "button") {
             value = entry.childNodes[1].textContent.toLowerCase();
         } else {
@@ -1002,14 +1020,14 @@ function setupInitialFunctionBarPosition() {
     }
 }
 
-function tryGetJSON(potentialJSONString, warn=true) {
+function tryGetJSON(potentialJSONString, warn = true) {
     if (potentialJSONString == "[]" || potentialJSONString == "{}" || potentialJSONString == "" || potentialJSONString == " ") return null; // TODO: find more sophisticated way to prevent dummy json data
 
     try {
         let jsonData = JSON.parse(potentialJSONString);
         if (jsonData && typeof jsonData === "object") return jsonData;
         else return null;
-    } catch(e) {
+    } catch (e) {
         if (warn) console.log("The provided JSON could not be parsed. The error message reads:\n", e);
         return null;
     }
@@ -1038,7 +1056,7 @@ function isTimestampColumn(str) {
 
 function stringIsInArray(str, targets) {
     let normalizedString = normalize(str);
-    return targets.includes(normalizedString); 
+    return targets.includes(normalizedString);
 }
 
 function isSeverityColumn(str) {
@@ -1107,7 +1125,7 @@ function resizeColumn(e, startX, column, neighborColumn) {
     let sign = deltaX <= 0 ? 1 : -1;
 
     // Collect start width values:
-    let width = column[0].offsetWidth;        
+    let width = column[0].offsetWidth;
     let neighborWidth = neighborColumn[0].offsetWidth;
     // Caculate new width values:
     let newWidth = width + deltaX;
@@ -1117,12 +1135,12 @@ function resizeColumn(e, startX, column, neighborColumn) {
         if (newWidth <= MIN_TABLE_HEADER_WIDTH || newNeighborWidth <= MIN_TABLE_HEADER_WIDTH) {
             return;
         }
-        
+
         if (i == 0) {
             correctFunctionBarPosition(newWidth, newNeighborWidth, column, neighborColumn);
             correctHeaderTextWidth(newWidth, newNeighborWidth, column, neighborColumn);
         }
-        
+
         column[i].style.minWidth = `${newWidth}px`;
         column[i].style.width = `${newWidth}px`;
 
@@ -1133,7 +1151,7 @@ function resizeColumn(e, startX, column, neighborColumn) {
 
 function setupColumnResizing() {
     let numColumns = getNumVisibleColumns();
-    $(".resizeArea").on('mousedown', function(e) {
+    $(".resizeArea").on('mousedown', function (e) {
         let index = $(this).closest('th').index(); // Index of the current column that is being moved
         if (index == numColumns - 1) return;
 
@@ -1160,4 +1178,317 @@ function setupColumnResizing() {
             startX = e.pageX;
         }
     });
+}
+
+
+function extractTableAsText() {
+    const lines = [];
+    $('.mainTr:visible').each(function () {
+        const cols = [];
+        $(this).children(':visible').each(function () {
+            const txt = (this.childNodes.length > 1
+                ? this.childNodes[this.childNodes.length - 1].textContent
+                : this.textContent).trim();
+            cols.push(txt);
+        });
+        lines.push(cols.join(' | '));
+    });
+    return lines.join('\n');
+}
+
+
+function extractTableAsCSV() {
+    let lines = [];
+
+    // Header
+    let header = [];
+    $('#tableHeaderRow').children(':visible').each(function () {
+        header.push($(this).find('.headerText').text().trim());
+    });
+    lines.push(header.join(";"));
+
+    // Rows
+    $('.mainTr:visible').each(function () {
+        let row = [];
+        $(this).children(':visible').each(function () {
+            let txt = this.childNodes.length > 1
+                ? this.childNodes[this.childNodes.length - 1].textContent.trim()
+                : this.textContent.trim();
+
+            if (txt.includes(";") || txt.includes('"'))
+                txt = `"${txt.replace(/"/g, '""')}"`;
+
+            row.push(txt);
+        });
+        lines.push(row.join(";"));
+    });
+
+    return lines.join("\n");
+}
+
+async function copyToClipboard(text) {
+    try {
+        await navigator.clipboard.writeText(text);
+        alert("Tabelle kopiert!");
+    } catch (err) {
+        // Fallback
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        alert("Tabelle kopiert (Fallback)!");
+    }
+}
+
+function downloadCSV(text) {
+    let blob = new Blob([text], { type: "text/csv;charset=utf-8;" });
+    let url = URL.createObjectURL(blob);
+
+    let a = document.createElement("a");
+    a.href = url;
+    a.download = "table_export.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function cloneWithInlineStyles(node) {
+    const clone = node.cloneNode(false);
+    if (node.nodeType === Node.ELEMENT_NODE) {
+        const computed = window.getComputedStyle(node);
+        const cssText = Array.from(computed).map(k => `${k}:${computed.getPropertyValue(k)};`).join('');
+        clone.setAttribute('style', cssText);
+        // WICHTIG: Scroll-Container im Klon „öffnen“
+        clone.style.overflow = 'visible';
+        clone.style.maxHeight = 'none';
+        clone.style.maxWidth  = 'none';
+    }
+    for (const child of node.childNodes) clone.appendChild(cloneWithInlineStyles(child));
+    return clone;
+}
+
+async function elementToImageBlobsTiled(element, {
+    mimeType = 'image/png',
+    quality  = 0.92,
+    scale    = 2
+} = {}) {
+    // Zielbreite/-höhe der GANZEN Tabelle bestimmen
+    const tableEl = document.getElementById('mainTable') || element;
+    const fullWidth  = Math.max(element.scrollWidth,  tableEl.scrollWidth,  element.offsetWidth);
+    const fullHeight = Math.max(element.scrollHeight, tableEl.scrollHeight, element.offsetHeight);
+
+    if (!fullWidth || !fullHeight)
+        throw new Error('elementToImageBlobsTiled: target has zero size');
+
+    // Scale begrenzen
+    const safeScale = ensureScaleWithinLimits(fullWidth, fullHeight, scale);
+
+    // Vertikale Slices berechnen
+    const slices = computeVerticalSlices(fullHeight, safeScale);
+    const blobs  = [];
+
+    for (const { offset, height } of slices) {
+        const cloned = cloneWithInlineStyles(element);
+        // Scroll/Clip im Klon vollständig aufheben
+        cloned.style.width     = fullWidth + 'px';
+        cloned.style.height    = fullHeight + 'px';
+        cloned.style.overflow  = 'visible';
+        cloned.style.maxHeight = 'none';
+        cloned.style.maxWidth  = 'none';
+        // Verschiebe den Inhalt nach oben, sodass der Slice (offset..offset+height) sichtbar ist
+        cloned.style.transform = `translateY(-${offset}px)`;
+
+        const wrapper = document.createElement('div');
+        wrapper.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+        wrapper.style.width  = fullWidth + 'px';
+        wrapper.style.height = height + 'px';
+        // Hintergrundfarbe (Dark-Theme):
+        wrapper.style.background = document.body.style.backgroundColor || 'rgb(33, 44, 68)';
+        wrapper.appendChild(cloned);
+
+        const svg =
+`<svg xmlns="http://www.w3.org/2000/svg"
+     width="${Math.round(fullWidth*safeScale)}"
+     height="${Math.round(height*safeScale)}"
+     viewBox="0 0 ${fullWidth} ${height}">
+  <foreignObject width="100%" height="100%">${new XMLSerializer().serializeToString(wrapper)}</foreignObject>
+</svg>`;
+
+        const img = await new Promise((resolve, reject) => {
+            const image = new Image();
+            image.decoding = 'async';
+            image.onload = () => resolve(image);
+            image.onerror = reject;
+            image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+        });
+
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.round(fullWidth  * safeScale);
+        canvas.height = Math.round(height     * safeScale);
+        const ctx = canvas.getContext('2d');
+        if (mimeType === 'image/jpeg') {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        const blob = await new Promise((resolve, reject) => {
+            canvas.toBlob(b => b ? resolve(b) : reject(new Error('toBlob returned null')), mimeType, quality);
+        });
+
+        blobs.push(blob);
+    }
+
+    return { blobs, scale: safeScale };
+}
+
+function downloadImageBlobs(blobs, baseName, ext="png") {
+    blobs.forEach((blob, idx) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        // _part_01, _part_02, ...
+        const num = String(idx + 1).padStart(2, '0');
+        a.href = url; a.download = `${baseName}_part_${num}.${ext}`;
+        a.click();
+        URL.revokeObjectURL(url);
+    });
+}
+
+async function copyFirstBlobToClipboard(blobs) {
+    if (!blobs.length) return;
+    if (navigator.clipboard && window.ClipboardItem) {
+        const item = new ClipboardItem({ [blobs[0].type]: blobs[0] });
+        await navigator.clipboard.write([item]);
+    } else {
+        throw new Error('Clipboard image copy not supported in this browser');
+    }
+}
+
+// Konservative Browser-Limits:
+const MAX_CANVAS_SIDE  = 16384;           // harte Seitenlänge
+const MAX_CANVAS_AREA  = 268435456;       // ~268 Mio Pixel (16k x 16k)
+
+// Passt den Scale so an, dass width*scale und height*scale die Limits einhalten
+function ensureScaleWithinLimits(width, height, scale) {
+    // Seite begrenzen
+    const scaleSide = Math.min(MAX_CANVAS_SIDE / Math.max(1, width),
+                               MAX_CANVAS_SIDE / Math.max(1, height));
+    // Fläche begrenzen
+    const scaleArea = Math.sqrt(MAX_CANVAS_AREA / Math.max(1, width * height));
+    // Effektiven Scale wählen (<= ursprünglicher scale)
+    return Math.min(scale, scaleSide, scaleArea);
+}
+
+// Liefert Offsets/Höhen für vertikale Slices, sodass (sliceHeight*scale) <= MAX_CANVAS_SIDE bleibt
+function computeVerticalSlices(totalHeight, scale) {
+    const MAX_SLICE_RENDERED = Math.floor(MAX_CANVAS_SIDE / Math.max(1, scale));
+    const slices = [];
+    let offset = 0;
+    while (offset < totalHeight) {
+        const remaining = totalHeight - offset;
+        const h = Math.min(remaining, MAX_SLICE_RENDERED);
+        slices.push({ offset, height: h });
+        offset += h;
+    }
+    return slices;
+}
+
+function getCaptureTarget() {
+    // Bevorzugt der Wrapper, sonst direkt die Tabelle
+    return document.getElementById('tableWrapper')
+        || document.getElementById('mainTable')
+        || null;
+}
+
+function setupCopyDropdown() {
+    const btn  = document.getElementById("copyDropdownBtn");
+    const menu = document.getElementById("copyDropdown");
+    if (!btn || !menu) return;
+
+    // Dropdown öffnen/schließen
+    btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        menu.style.display = (menu.style.display === "none" || !menu.style.display) ? "block" : "none";
+    });
+
+    // Optionen bedienen
+    document.querySelectorAll("#copyDropdown .copyOption").forEach(opt => {
+        opt.addEventListener("click", async () => {
+            try {
+                const mode   = opt.getAttribute("data-copy");
+                const target = getCaptureTarget();               // <-- WICHTIG: hier definieren!
+                if (!target) {
+                    console.error("No capture target (#tableWrapper/#mainTable) found");
+                    alert("Kein Tabellen-Container gefunden (#tableWrapper/#mainTable).");
+                    return;
+                }
+
+                switch (mode) {
+                    case "text":
+                        await copyToClipboard(extractTableAsText());
+                        break;
+
+                    case "csv":
+                        await copyToClipboard(extractTableAsCSV());
+                        break;
+
+                    case "download csv":
+                        downloadCSV(extractTableAsCSV());
+                        break;
+                    
+                    /* ---------------- FULL TABLE EXPORTS ---------------- */
+                    
+                    case "png-full": {
+                        const { blobs } = await elementToImageBlobsTiled(target, {
+                            mimeType: "image/png",
+                            scale: 2
+                        });
+                        await copyFirstBlobToClipboard(blobs);
+                        alert(blobs.length > 1
+                            ? `Bild (Slice 1/${blobs.length}) in Zwischenablage.`
+                            : `Bild kopiert.`);
+                        break;
+                    }
+                
+                    case "download png full": {
+                        const { blobs } = await elementToImageBlobsTiled(target, {
+                            mimeType: "image/png",
+                            scale: 2
+                        });
+  
+                        downloadImageBlobs(blobs, "table_export_full", "png");
+                        break;
+                    }
+                
+                    case "download jpg full": {
+                        const { blobs } = await elementToImageBlobsTiled(target, {
+                            mimeType: "image/jpeg",
+                            scale: 2
+                        });
+                        downloadImageBlobs(blobs, "table_export_full", "jpg");
+                        break;
+                    }
+                
+                    default:
+                        console.warn("Unknown copy mode:", mode);
+                }
+
+            } catch (e) {
+                console.error('Copy/Export failed:', e);
+                alert('Bild-/Daten-Export fehlgeschlagen (siehe Konsole).');
+            } finally {
+                // Menü schließen
+                menu.style.display = "none";
+                // Für die .open-Variante:
+                // menu.classList.remove('open');
+            }
+        });
+    });
+
+    // Klick außerhalb schließt Dropdown
+    document.addEventListener("click", () => { menu.style.display = "none"; /* menu.classList.remove('open'); */ });
 }
