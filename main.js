@@ -1811,7 +1811,6 @@ function buildAppRuntimeInlineScript() {
   // (inkl. der jetzt fehlenden addJsonExpansionEvent, getChildExpansion, expandJson)
   const requiredFns = [
     // Expand Hauptlogik
-    
     applyRowColorStyling,
     applyRowStyling,
     buttonIsExpanded,
