@@ -886,13 +886,27 @@ function setupTablesorter(severityColumnIndices, timestampColumnIndices) {
     Ideally, each expanded window should be bound to the corresponding <tr> but since that requires quite a bit more code
     the simpler solution is to delete all expansion windows on tablesort. */
 function removeAllExpandWindows() {
-    let allExpansionWindows = $(".expansionWindow");
+  $(".expansionWindow").each(function () {
+    const $exp = $(this);
 
-    $(".expansionWindow").each(function () {
-        let button = $(this).prev().children().first()[0].childNodes[0];
-        changeExpandButtonIcon(button, true);
-        $(this).remove();
-    })
+    // Versuche, die vorherige Datenzeile zu finden
+    const $prevRow = $exp.prev('tr');
+
+    if ($prevRow.length) {
+      // Suche explizit nach dem Button-Element der Expand-Funktion
+      const btnEl = $prevRow.find('button.expandButton').get(0);
+      if (btnEl) {
+        try {
+          changeExpandButtonIcon(btnEl, true);
+        } catch (e) {
+          console.warn('changeExpandButtonIcon failed:', e);
+        }
+      }
+    }
+
+    // Entferne das Expansion-Window immer (unabhängig davon, ob ein Button gefunden wurde)
+    $exp.remove();
+  });
 }
 
 function setupSortIconDisplay() {
@@ -1416,93 +1430,95 @@ async function buildStyledHTML({ standalone = false, preserveBackground = true }
 
 // --- NEW: Klon für Export bereinigen ---
 // Entfernt UI-Steuerelemente/Dropdowns u. ä. und lässt nur sichtbare Spalten/Zeilen stehen
-function pruneForTableExport(root) {
-    // 1) UI-Container weg
-    //    (Copy-Dropdown, ColumnVisibility, RecordWrapper etc.) — nur die Tabelle soll bleiben
-    const removableSelectors = [
-        '#copyContainer',
-        '#copyDropdown',
-        '#columnVisibilityWrapper',
-        '.dropdownParent',
-        '.dropdown',
-        '.functionBar',
-        '.filterIconContainer',
-        '.resizeArea',
-        '.sortIcon',
-        '#recordWrapper'
-    ];
-    removableSelectors.forEach(sel => root.querySelectorAll(sel).forEach(n => n.remove()));
+// --- NEU/GEÄNDERT ---
+function pruneForTableExport(root, { interactive = false } = {}) {
+  // 1) UI-Container nur entfernen, wenn NICHT interaktiv exportiert wird
+  const removableAlways = [
+    '#recordWrapper' // die Zahl-Anzeige ist optional – kannst du auch drin lassen
+  ];
+  const removableIfStatic = [
+    '#copyContainer',
+    '#copyDropdown',
+    '#columnVisibilityWrapper',
+    '.dropdownParent',
+    '.dropdown',
+    '.functionBar',
+    '.filterIconContainer',
+    '.resizeArea',
+    '.sortIcon'
+  ];
 
-    // 2) Expand-Buttons in Zellen entfernen
+  [...removableAlways, ...(interactive ? [] : removableIfStatic)]
+    .forEach(sel => root.querySelectorAll(sel).forEach(n => n.remove()));
+
+  // 2) Expand-Buttons in Zellen nur entfernen, wenn NICHT interaktiv
+  if (!interactive) {
     root.querySelectorAll('td, th').forEach(td => {
-        if (td.firstElementChild && td.firstElementChild.tagName === 'BUTTON') {
-            td.removeChild(td.firstElementChild);
-        }
+      if (td.firstElementChild && td.firstElementChild.tagName === 'BUTTON') {
+        td.removeChild(td.firstElementChild);
+      }
     });
+  }
 
-    // 3) Nur sichtbare Spalten behalten: Ermittele sichtbare Header-Indizes aus Original
-    const visibleHeaderIdx = [];
-    const origHeaderCells = document.querySelectorAll('#tableHeaderRow > th');
-    origHeaderCells.forEach((th, idx) => {
-        const visible = th.offsetParent !== null && th.offsetWidth > 0 && th.offsetHeight > 0;
-        if (visible) visibleHeaderIdx.push(idx);
+  // 3) Sichtbarkeiten/Spalten trimmen wie gehabt
+  const visibleHeaderIdx = [];
+  const origHeaderCells = document.querySelectorAll('#tableHeaderRow > th');
+  origHeaderCells.forEach((th, idx) => {
+    const visible = th.offsetParent !== null && th.offsetWidth > 0 && th.offsetHeight > 0;
+    if (visible) visibleHeaderIdx.push(idx);
+  });
+
+  const clonedHeaderRow = root.querySelector('#tableHeaderRow');
+  if (clonedHeaderRow) {
+    Array.from(clonedHeaderRow.children).forEach((th, idx) => {
+      if (!visibleHeaderIdx.includes(idx)) th.remove();
     });
+  }
 
-    // 4) Im Klon alle Header/Rows auf diese sichtbaren Indizes trimmen
-    const clonedHeaderRow = root.querySelector('#tableHeaderRow');
-    if (clonedHeaderRow) {
-        Array.from(clonedHeaderRow.children).forEach((th, idx) => {
-            if (!visibleHeaderIdx.includes(idx)) th.remove();
-        });
+  root.querySelectorAll('tr.mainTr').forEach((tr, rowIndex) => {
+    const origRow = document.querySelectorAll('tr.mainTr')[rowIndex];
+    const rowVisible = origRow && (origRow.offsetParent !== null) && (origRow.offsetWidth > 0) && (origRow.offsetHeight > 0);
+    if (!rowVisible) {
+      tr.remove();
+      return;
     }
-
-    // 5) Nur sichtbare Datenzeilen (mainTr) und ihre sichtbaren tds
-    root.querySelectorAll('tr.mainTr').forEach((tr, rowIndex) => {
-        // Prüfe Sichtbarkeit im Original (weil :visible im Klon nicht funktioniert)
-        const origRow = document.querySelectorAll('tr.mainTr')[rowIndex];
-        const rowVisible = origRow && (origRow.offsetParent !== null) && (origRow.offsetWidth > 0) && (origRow.offsetHeight > 0);
-        if (!rowVisible) {
-            tr.remove();
-            return;
-        }
-        // Spalten trimmen
-        const cells = Array.from(tr.children);
-        cells.forEach((td, idx) => {
-            if (!visibleHeaderIdx.includes(idx)) td.remove();
-        });
+    const cells = Array.from(tr.children);
+    cells.forEach((td, idx) => {
+      if (!visibleHeaderIdx.includes(idx)) td.remove();
     });
+  });
 
-    // 6) Expansionen (untere .expansionWindow) für HTML-Export entfernen
+  // 4) Expansionen nur entfernen, wenn NICHT interaktiv
+  if (!interactive) {
     root.querySelectorAll('tr.expansionWindow, .childExpansion').forEach(n => n.remove());
+  }
 
-    // 7) Tabellenbreite fixen: min/max entfernen, Inline-Breiten übernehmen
-    const table = root.querySelector('#mainTable');
-    if (table) {
-        table.style.width = (document.getElementById('mainTable')?.offsetWidth || table.offsetWidth) + 'px';
-        table.style.maxWidth = 'none';
-        table.style.minWidth = '0';
-    }
-    // TH/TD Breiten fixieren
-    const origRows = document.querySelectorAll('#mainTable tr');
-    const clonedRows = root.querySelectorAll('#mainTable tr');
+  // 5) Breiten fixieren wie gehabt
+  const table = root.querySelector('#mainTable');
+  if (table) {
+    table.style.width = (document.getElementById('mainTable')?.offsetWidth || table.offsetWidth) + 'px';
+    table.style.maxWidth = 'none';
+    table.style.minWidth = '0';
+  }
 
-    for (let r = 0; r < Math.min(origRows.length, clonedRows.length); r++) {
-        const oCells = origRows[r].children;
-        const cCells = clonedRows[r].children;
-        for (let c = 0; c < Math.min(oCells.length, cCells.length); c++) {
-            const ow = oCells[c].offsetWidth;
-            if (ow > 0) {
-                cCells[c].style.width = ow + 'px';
-                cCells[c].style.minWidth = ow + 'px';
-                cCells[c].style.maxWidth = ow + 'px';
-                cCells[c].style.whiteSpace = 'nowrap'; // behält Tabellenlayout wie gesehen
-                // Bei Bedarf Ellipsis übernehmen:
-                const ocs = window.getComputedStyle(oCells[c]);
-                if (ocs.textOverflow) cCells[c].style.textOverflow = ocs.textOverflow;
-                if (ocs.overflow)     cCells[c].style.overflow     = ocs.overflow;
-            }
-        }
+  const origRows = document.querySelectorAll('#mainTable tr');
+  const clonedRows = root.querySelectorAll('#mainTable tr');
+  for (let r = 0; r < Math.min(origRows.length, clonedRows.length); r++) {
+    const oCells = origRows[r].children;
+    const cCells = clonedRows[r].children;
+    for (let c = 0; c < Math.min(oCells.length, cCells.length); c++) {
+      const ow = oCells[c].offsetWidth;
+      if (ow > 0) {
+        cCells[c].style.width = ow + 'px';
+        cCells[c].style.minWidth = ow + 'px';
+        cCells[c].style.maxWidth = ow + 'px';
+        cCells[c].style.whiteSpace = 'nowrap';
+        const ocs = window.getComputedStyle(oCells[c]);
+        if (ocs.textOverflow) cCells[c].style.textOverflow = ocs.textOverflow;
+        if (ocs.overflow)     cCells[c].style.overflow     = ocs.overflow;
+      }
     }
+  }
 }
 
 // --- NEW: HTML mit Inline-CSS in Clipboard (text/html) ---
@@ -1672,12 +1688,14 @@ async function resolveFetchCssMarkers(cssTextWithMarkers) {
 // ... etc.
 
 // --- NEW: Export mit eingebettetem Stylesheet + Inline-Styles ---
-a// --- Export mit eingebettetem Stylesheet + Inline-Styles + optional JS ---
 // --- Export mit eingebettetem Stylesheet + Inline-Styles + optional JS ---
+// --- Export mit eingebettetem Stylesheet + Inline-Styles + optional JS ---
+// --- GEÄNDERT ---
 async function buildHTMLWithEmbeddedCSS({
   standalone = false,
   preserveBackground = true,
-  includeJS = 'none'   // <--- NEU: 'inline' | 'cdn' | 'none'
+  includeJS = 'none',   // 'inline' | 'cdn' | 'none'
+  interactive = false   // <--- NEU: interaktive UI behalten & bootstrap einbetten
 } = {}) {
   const target = getCaptureTarget();
   if (!target) throw new Error("Kein Tabellen-Container (#tableWrapper/#mainTable) gefunden.");
@@ -1685,8 +1703,8 @@ async function buildHTMLWithEmbeddedCSS({
   // 1) Sichtbaren Bereich klonen und Computed Styles inline übernehmen
   const rootClone = cloneWithInlineStyles(target);
 
-  // 2) Aufräumen (nur sichtbare Spalten/Zeilen, UI-Controls entfernen)
-  pruneForTableExport(rootClone);
+  // 2) Aufräumen (nur sichtbare Spalten/Zeilen; UI je nach Modus behalten/entfernen)
+  pruneForTableExport(rootClone, { interactive });
 
   // 3) Optional Hintergrund übernehmen
   if (preserveBackground) {
@@ -1700,11 +1718,9 @@ async function buildHTMLWithEmbeddedCSS({
   // 4) Tabelle finden
   const exportedTable = rootClone.querySelector('#mainTable') || rootClone.querySelector('table') || rootClone;
 
-  // 5) CSS aus Dokument einsammeln (inkl. <link rel="stylesheet">), nur same-origin
+  // 5) CSS einsammeln & Reset
   let docCss = collectCSSFromDocument();
   docCss = await resolveFetchCssMarkers(docCss);
-
-  // 6) Minimaler Reset
   const minimalReset = `
     table{border-collapse:collapse}
     th,td{border:1px solid rgba(255,255,255,0.08); padding:4px 6px}
@@ -1713,14 +1729,16 @@ async function buildHTMLWithEmbeddedCSS({
   const fragmentHTML = exportedTable.outerHTML;
 
   if (!standalone) {
-    // Für Clipboard: Skripte sind oft nutzlos/werden gestript – deshalb KEIN JS hier
+    // Clipboard-Pfad: KEIN JS (wird ohnehin oft gestript)
     return `<style>${docCss}\n${minimalReset}</style>\n${fragmentHTML}`;
   }
 
-  // 7) JS-Bundle erzeugen (inline/cdn/none)
-  const jsBundle = await buildJsBundle(includeJS);
+  // 6) jQuery/tablesorter-Bundle
+  const libJs = await buildJsBundle(includeJS); // 'inline' für offline, s.u.
 
-  // Vollständiges HTML-Dokument für Download
+  // 7) Deine Runtime nur einbetten, wenn interaktiv
+  const appJs = interactive ? buildAppRuntimeInlineScript() : '';
+
   const docLang = document.documentElement.lang || 'de';
   const full = [
     '<!doctype html>',
@@ -1733,8 +1751,8 @@ async function buildHTMLWithEmbeddedCSS({
     '</head>',
     '<body>',
     fragmentHTML,
-    // <--- NEU: JS-Bundle direkt vor </body> einfügen
-    jsBundle,
+    libJs,   // jQuery + tablesorter (+ Init)
+    appJs,   // <--- DEINE Runtime (Expand/Copy/…)
     '</body>',
     '</html>'
   ].join('');
@@ -1776,6 +1794,97 @@ function sanitizeHtmlForServiceNow(htmlString) {
   } else {
     return doc.body.innerText || ""; // Fallback: Plaintext
   }
+}
+
+// --- NEU: packt die benötigten Funktionen/Konstanten als inline <script> ---
+function buildAppRuntimeInlineScript() {
+  // Konstanten, die in Funktionen referenziert werden
+  const constants = `
+    const TOGGLE_ANIMATION_MS = ${typeof TOGGLE_ANIMATION_MS !== 'undefined' ? TOGGLE_ANIMATION_MS : 200};
+    const FUNCTION_BAR_OFFSET = ${typeof FUNCTION_BAR_OFFSET !== 'undefined' ? FUNCTION_BAR_OFFSET : 40};
+    const HEADER_TEXT_WIDTH_RATIO = ${typeof HEADER_TEXT_WIDTH_RATIO !== 'undefined' ? HEADER_TEXT_WIDTH_RATIO : (4/5)};
+    const BASE_INDENT = ${typeof BASE_INDENT !== 'undefined' ? BASE_INDENT : 50};
+    const BASE_INDENT_OFFSET = ${typeof BASE_INDENT_OFFSET !== 'undefined' ? BASE_INDENT_OFFSET : 25};
+  `;
+
+  // 🔴 WICHTIG: Alle Funktionen, die für Expand/Copy/Filter/Resize benötigt werden
+  // (inkl. der jetzt fehlenden addJsonExpansionEvent, getChildExpansion, expandJson)
+  const requiredFns = [
+    // Expand Hauptlogik
+    
+    applyRowColorStyling,
+    applyRowStyling,
+    buttonIsExpanded,
+    changeExpandButtonIcon,
+    createRowExpandButton,
+    addExpandButtonEventListeners,
+    expandRow,
+    addNestedEntry,
+    addExpandedRowEntry,
+    extractTextFromChildNodes,
+    getColumnNames,
+    prepareExpandTable,
+    removeAllExpandWindows,
+
+    // JSON-Expand inkl. fehlender Funktionen
+    prepareJsonExpansion,
+    addJsonExpansionEvent,   // <--- vorher fehlend
+    getChildExpansion,       // <--- vorher fehlend
+    expandJson,              // <--- vorher fehlend
+    tryGetJSON,
+
+    // Dropdowns / Filter / Sort-Icon / Resize
+    setupDropdownMenus,
+    hideDropdowns,
+    setupDropdownClosing,
+    setupFiltering,
+    toggleFilter,
+    resetFilterAfterModeChange,
+    setupSortIconDisplay,
+    setupColumnResizing,
+    correctFunctionBarPosition,
+    correctHeaderTextWidth,
+    resizeColumn,
+
+    // Capture/Export Utils, die im Copy-Menü genutzt werden
+    getCaptureTarget,
+    cloneWithInlineStyles,
+    ensureScaleWithinLimits,
+    computeVerticalSlices,
+    elementToImageBlobsTiled,
+    downloadImageBlobs,
+    copyFirstBlobToClipboard,
+
+    // Copy-Varianten
+    extractTableAsText,
+    extractTableAsCSV,
+    downloadCSV,
+    stripHtml,
+
+    // Copy-Dropdown Handler
+    setupCopyDropdown
+  ];
+
+  const fnText = requiredFns
+    .filter(fn => typeof fn === 'function')
+    .map(fn => fn.toString())
+    .join('\n\n');
+
+  // Bootstrap: Event-Handler im exportierten Dokument neu anbinden
+  const bootstrap = `
+    function __exportBootstrap() {
+      try { setupDropdownMenus(); } catch(e) { console.warn('dropdown menus failed', e); }
+      try { setupCopyDropdown(); } catch(e) { console.warn('copy dropdown failed', e); }
+      try { addExpandButtonEventListeners(false); } catch(e) { console.warn('expand listeners failed', e); }
+      try { prepareJsonExpansion(); } catch(e) { console.warn('json expansion prepare failed', e); }
+      try { setupFiltering(); } catch(e) { console.warn('filter setup failed', e); }
+      try { setupColumnResizing(); } catch(e) { console.warn('resize setup failed', e); }
+      try { setupSortIconDisplay(); } catch(e) { console.warn('sort icon setup failed', e); }
+    }
+    document.addEventListener('DOMContentLoaded', __exportBootstrap);
+  `;
+
+  return `<script>(function(){\n${constants}\n${fnText}\n${bootstrap}\n})();</script>`;
 }
 
 // Baut eine einfache <table> aus deinem Grid (tr.mainTr + td.dataTd[data-column])
@@ -2174,7 +2283,8 @@ function setupCopyDropdown() {
                       const fullHtml = await buildHTMLWithEmbeddedCSS({
                         standalone: true,
                         preserveBackground: true,
-                        includeJS: 'inline' // <--- Offline-fähig: JS wird inline eingebettet
+                        includeJS: 'inline',  // offline-fähig
+                        interactive: true     // UI/Buttons behalten + Runtime einbetten
                       });
                       const blob = new Blob([fullHtml], { type: "text/html;charset=utf-8" });
                       const url  = URL.createObjectURL(blob);
