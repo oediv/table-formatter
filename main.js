@@ -54,6 +54,9 @@ function createStaticTableElements() {
     <div class="copyOption" data-copy="csv"           style="cursor:pointer; padding:4px;">🧾 Copy as CSV</div>
     <div class="copyOption" data-copy="download csv"  style="cursor:pointer; padding:4px;">🧾 Download CSV</div>
     <hr style="border-color:#333; margin:6px 0;">
+    <div class="copyOption" data-copy="html"          style="cursor:pointer; padding:4px;">📋 Copy as HTML</div>
+    <div class="copyOption" data-copy="download html" style="cursor:pointer; padding:4px;">⬇️ Download HTML</div>
+    <hr style="border-color:#333; margin:6px 0;">
     <div class="copyOption" data-copy="png-full"          style="cursor:pointer; padding:4px;">🖼️ Copy as PNG (Full table)</div>
     <div class="copyOption" data-copy="download png full" style="cursor:pointer; padding:4px;">⬇️ Download PNG (Full table)</div>
     <div class="copyOption" data-copy="download jpg full" style="cursor:pointer; padding:4px;">⬇️ Download JPG (Full table)</div>
@@ -571,7 +574,7 @@ function extractTextFromChildNodes(childNodes) {
 
     let text = "";
     for (let node of childNodes) {
-        if (typeof node == "button") continue; // filter out expansion buttons
+        if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'BUTTON') continue;
 
         let childNodeText = node.nodeValue;
         if (typeof childNodeText != "string") continue; // failsafe; this condition should never be true, but this check here is just in case 
@@ -768,7 +771,7 @@ function extractSeverityColumns(columnNames) {
         let rows = $("tr").toArray();
         for (let i = 1; i < rows.length; i++) {
             let currentColumn = rows[i].children[severityColumnCandidate];
-            if (!td || !td.textContent.trim()) continue;
+            if (!currentColumn || !currentColumn.textContent || !currentColumn.textContent.trim()) continue;
 
             let data = currentColumn.textContent;
 
@@ -1256,6 +1259,701 @@ function downloadCSV(text) {
     URL.revokeObjectURL(url);
 }
 
+// --- NEW: HTML in Zwischenablage kopieren (bevorzugt 'text/html', Fallback execCommand) ---
+async function copyHTMLToClipboard(html) {
+    try {
+        if (navigator.clipboard && window.ClipboardItem) {
+            const item = new ClipboardItem({
+                'text/html': new Blob([html], { type: 'text/html' }),
+                'text/plain': new Blob([stripHtml(html)], { type: 'text/plain' })
+            });
+            await navigator.clipboard.write([item]);
+            alert("HTML kopiert!");
+        } else {
+            // Fallback: contenteditable-Knoten selektieren und kopieren
+            const div = document.createElement('div');
+            div.contentEditable = 'true';
+            div.style.position = 'fixed';
+            div.style.opacity = '0';
+            div.style.left = '-9999px';
+            div.innerHTML = html;
+            document.body.appendChild(div);
+            const range = document.createRange();
+            range.selectNodeContents(div);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            document.execCommand('copy');
+            document.body.removeChild(div);
+            alert("HTML kopiert (Fallback)!");
+        }
+    } catch (e) {
+        console.error("Copy HTML failed:", e);
+        alert("HTML-Export fehlgeschlagen (siehe Konsole).");
+    }
+}
+
+// --- NEW: „sauberes“ HTML-Table aus den sichtbaren Spalten/Zeilen generieren ---
+//  - Erhält Links/Inline-HTML in Zellen
+//  - Entfernt Expand-Buttons aus Zellen
+//  - Optional: überträgt einfache Inline-Styles der Zelle (z.B. Farbe)
+function extractTableAsHTML({ includeHeader = true, preserveCellStyle = false } = {}) {
+    // Header einsammeln (nur sichtbare)
+    const headers = [];
+    $('#tableHeaderRow').children(':visible').each(function () {
+        headers.push($(this).find('.headerText').text().trim());
+    });
+
+    // Zeilen (nur sichtbare .mainTr und deren sichtbare Zellen)
+    const bodyRows = [];
+    $('.mainTr:visible').each(function () {
+        const tds = [];
+        $(this).children(':visible').each(function () {
+            const cellHTML = getCellInnerHTMLWithoutExpandButton(this);
+            const style = preserveCellStyle ? (this.getAttribute('style') || '') : '';
+            tds.push(style ? `<td style="${style}">${cellHTML}</td>` : `<td>${cellHTML}</td>`);
+        });
+        bodyRows.push(`<tr>${tds.join('')}</tr>`);
+    });
+
+    const thead = (includeHeader && headers.length)
+        ? `<thead><tr>${headers.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>`
+        : '';
+
+    // Minimales, eigenständiges HTML-Table zurückgeben
+    return `<table>${thead}<tbody>${bodyRows.join('')}</tbody></table>`;
+}
+
+// --- NEW: Zell-HTML ohne Expand-Button (falls vorhanden) ---
+function getCellInnerHTMLWithoutExpandButton(td) {
+    const clone = td.cloneNode(true);
+    // Wenn erstes Child ein Button ist (Expand-Button), entfernen
+    if (clone.firstChild &&
+        clone.firstChild.nodeType === Node.ELEMENT_NODE &&
+        clone.firstChild.tagName === 'BUTTON') {
+        clone.removeChild(clone.firstChild);
+    }
+    return clone.innerHTML.trim();
+}
+
+// --- NEW: HTML-Datei herunterladen ---
+function downloadHTML(html, filename = "table_export.html") {
+    const blob = new Blob([html], { type: "text/html;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+}
+
+// --- Utils: HTML escapen / HTML zu Text ---
+function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+}
+function stripHtml(html) {
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    return (div.textContent || div.innerText || '').trim();
+}
+
+// --- NEW: Sichtbare Tabelle als "Styled HTML" (mit Inline-CSS) exportieren ---
+// Optionen:
+// - standalone: true => vollständiges HTML-Dokument mit <html><head>...<body>
+//               false => nur das <table>-Fragment (z.B. für Clipboard "text/html")
+// - preserveBackground: Dark-Theme-Hintergrund (body/#tableWrapper) übernehmen
+async function buildStyledHTML({ standalone = false, preserveBackground = true } = {}) {
+    const target = getCaptureTarget(); // #tableWrapper bevorzugt, sonst #mainTable
+    if (!target) throw new Error("Kein Tabellen-Container (#tableWrapper/#mainTable) gefunden.");
+
+    // 1) Sichtbaren Bereich klonen und Styles inline anheften
+    const rootClone = cloneWithInlineStyles(target);
+
+    // 2) Aufräumen (UI/Controls entfernen, nur sichtbare Spalten/Zeilen behalten)
+    pruneForTableExport(rootClone);
+
+    // 3) Hintergrund und max-Width/Overflow sicherstellen
+    if (preserveBackground) {
+        const bg = (document.body && window.getComputedStyle(document.body).backgroundColor) || 'rgb(33, 44, 68)';
+        rootClone.style.background = bg;
+        rootClone.style.overflow = 'visible';
+        rootClone.style.maxWidth = 'none';
+        rootClone.style.maxHeight = 'none';
+    }
+
+    // 4) Table-Element extrahieren (im Wrapper) oder ganzes Konstrukt verwenden
+    const exportedTable = rootClone.querySelector('#mainTable') || rootClone.querySelector('table') || rootClone;
+
+    // 5) Fragment (nur <table>…) oder vollständiges HTML-Dokument erzeugen
+    const fragmentHTML = exportedTable.outerHTML;
+
+    if (!standalone) {
+        // Nur das Fragment (für Clipboard)
+        return fragmentHTML;
+    }
+
+    // Vollständiges HTML (Download)
+    const docLang = document.documentElement.lang || 'en';
+    const metaBg = preserveBackground
+        ? `body{background:${(document.body && window.getComputedStyle(document.body).backgroundColor) || '#212c44'};}`
+        : '';
+
+    const full = [
+        '<!doctype html>',
+        `<html lang="${docLang}">`,
+        '<head>',
+        '<meta charset="utf-8">',
+        '<meta name="viewport" content="width=device-width,initial-scale=1">',
+        // Kein externes CSS — alle Stile sind inline. Eine minimale Safety-Reset-Regel:
+        `<style>table{border-collapse:collapse} th,td{border:1px solid rgba(255,255,255,0.08); padding:4px 6px} ${metaBg}</style>`,
+        '<title>table_export</title>',
+        '</head>',
+        '<body>',
+        fragmentHTML,
+        '</body>',
+        '</html>'
+    ].join('');
+    return full;
+}
+
+// --- NEW: Klon für Export bereinigen ---
+// Entfernt UI-Steuerelemente/Dropdowns u. ä. und lässt nur sichtbare Spalten/Zeilen stehen
+function pruneForTableExport(root) {
+    // 1) UI-Container weg
+    //    (Copy-Dropdown, ColumnVisibility, RecordWrapper etc.) — nur die Tabelle soll bleiben
+    const removableSelectors = [
+        '#copyContainer',
+        '#copyDropdown',
+        '#columnVisibilityWrapper',
+        '.dropdownParent',
+        '.dropdown',
+        '.functionBar',
+        '.filterIconContainer',
+        '.resizeArea',
+        '.sortIcon',
+        '#recordWrapper'
+    ];
+    removableSelectors.forEach(sel => root.querySelectorAll(sel).forEach(n => n.remove()));
+
+    // 2) Expand-Buttons in Zellen entfernen
+    root.querySelectorAll('td, th').forEach(td => {
+        if (td.firstElementChild && td.firstElementChild.tagName === 'BUTTON') {
+            td.removeChild(td.firstElementChild);
+        }
+    });
+
+    // 3) Nur sichtbare Spalten behalten: Ermittele sichtbare Header-Indizes aus Original
+    const visibleHeaderIdx = [];
+    const origHeaderCells = document.querySelectorAll('#tableHeaderRow > th');
+    origHeaderCells.forEach((th, idx) => {
+        const visible = th.offsetParent !== null && th.offsetWidth > 0 && th.offsetHeight > 0;
+        if (visible) visibleHeaderIdx.push(idx);
+    });
+
+    // 4) Im Klon alle Header/Rows auf diese sichtbaren Indizes trimmen
+    const clonedHeaderRow = root.querySelector('#tableHeaderRow');
+    if (clonedHeaderRow) {
+        Array.from(clonedHeaderRow.children).forEach((th, idx) => {
+            if (!visibleHeaderIdx.includes(idx)) th.remove();
+        });
+    }
+
+    // 5) Nur sichtbare Datenzeilen (mainTr) und ihre sichtbaren tds
+    root.querySelectorAll('tr.mainTr').forEach((tr, rowIndex) => {
+        // Prüfe Sichtbarkeit im Original (weil :visible im Klon nicht funktioniert)
+        const origRow = document.querySelectorAll('tr.mainTr')[rowIndex];
+        const rowVisible = origRow && (origRow.offsetParent !== null) && (origRow.offsetWidth > 0) && (origRow.offsetHeight > 0);
+        if (!rowVisible) {
+            tr.remove();
+            return;
+        }
+        // Spalten trimmen
+        const cells = Array.from(tr.children);
+        cells.forEach((td, idx) => {
+            if (!visibleHeaderIdx.includes(idx)) td.remove();
+        });
+    });
+
+    // 6) Expansionen (untere .expansionWindow) für HTML-Export entfernen
+    root.querySelectorAll('tr.expansionWindow, .childExpansion').forEach(n => n.remove());
+
+    // 7) Tabellenbreite fixen: min/max entfernen, Inline-Breiten übernehmen
+    const table = root.querySelector('#mainTable');
+    if (table) {
+        table.style.width = (document.getElementById('mainTable')?.offsetWidth || table.offsetWidth) + 'px';
+        table.style.maxWidth = 'none';
+        table.style.minWidth = '0';
+    }
+    // TH/TD Breiten fixieren
+    const origRows = document.querySelectorAll('#mainTable tr');
+    const clonedRows = root.querySelectorAll('#mainTable tr');
+
+    for (let r = 0; r < Math.min(origRows.length, clonedRows.length); r++) {
+        const oCells = origRows[r].children;
+        const cCells = clonedRows[r].children;
+        for (let c = 0; c < Math.min(oCells.length, cCells.length); c++) {
+            const ow = oCells[c].offsetWidth;
+            if (ow > 0) {
+                cCells[c].style.width = ow + 'px';
+                cCells[c].style.minWidth = ow + 'px';
+                cCells[c].style.maxWidth = ow + 'px';
+                cCells[c].style.whiteSpace = 'nowrap'; // behält Tabellenlayout wie gesehen
+                // Bei Bedarf Ellipsis übernehmen:
+                const ocs = window.getComputedStyle(oCells[c]);
+                if (ocs.textOverflow) cCells[c].style.textOverflow = ocs.textOverflow;
+                if (ocs.overflow)     cCells[c].style.overflow     = ocs.overflow;
+            }
+        }
+    }
+}
+
+// --- NEW: HTML mit Inline-CSS in Clipboard (text/html) ---
+async function copyStyledHTMLToClipboard() {
+    const html = await buildStyledHTML({ standalone: false, preserveBackground: true });
+    if (navigator.clipboard && window.ClipboardItem) {
+        const item = new ClipboardItem({
+            'text/html': new Blob([html], { type: 'text/html' }),
+            // Plaintext-Fallback, falls Zielapp das braucht
+            'text/plain': new Blob([stripHtml(html)], { type: 'text/plain' })
+        });
+        await navigator.clipboard.write([item]);
+        alert('HTML (mit CSS) kopiert!');
+    } else {
+        // Fallback über contenteditable
+        const div = document.createElement('div');
+        div.contentEditable = 'true';
+        div.style.position = 'fixed';
+        div.style.opacity = '0';
+        div.style.left = '-9999px';
+        div.innerHTML = html;
+        document.body.appendChild(div);
+        const range = document.createRange();
+        range.selectNodeContents(div);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        document.execCommand('copy');
+        document.body.removeChild(div);
+        alert('HTML (mit CSS) kopiert (Fallback)!');
+    }
+}
+
+// --- NEW: Download als eigenständige .html (mit Inline-CSS + optional JS) ---
+async function downloadStyledHTML(filename = 'table_export.html') {
+  const fullHtml = await buildHTMLWithEmbeddedCSS({
+    standalone: true,
+    preserveBackground: true,
+    includeJS: 'inline'   // <--- NEU: ganze Datei offline lauffähig
+  });
+  const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// --- NEW: Stylesheet-Inhalte einsammeln (nur same-origin) ---
+function collectCSSFromDocument() {
+    let cssText = "";
+
+    for (const sheet of Array.from(document.styleSheets)) {
+        try {
+            // Zugriff kann SecurityError werfen (CORS, cross-origin)
+            const rules = sheet.cssRules || [];
+            for (const rule of Array.from(rules)) {
+                cssText += rule.cssText + "\n";
+            }
+        } catch (e) {
+            // Fallback: versuchen per fetch, wenn Link-URL same-origin ist
+            const owner = sheet.ownerNode;
+            if (owner && owner.tagName === 'LINK' && owner.href) {
+                try {
+                    const url = new URL(owner.href, location.href);
+                    const sameOrigin = url.origin === location.origin;
+                    if (sameOrigin) {
+                        // Achtung: fetch kann bei manchen CSPs blocken
+                        // Wir nutzen den synchronen Weg unten NICHT, nur optionalen async Fetch im Aufrufer.
+                        // Hier nur Marker setzen; eigentlicher Fetch passiert in build*().
+                        cssText += `/*__FETCH_CSS__:${url.href}*/\n`;
+                    } else {
+                        console.warn('Stylesheet ist cross-origin, wird ausgelassen:', owner.href);
+                    }
+                } catch (err) {
+                    console.warn('Konnte Stylesheet-URL nicht parsen:', err);
+                }
+            } else {
+                console.warn('Stylesheet ohne zugreifbare cssRules ausgelassen (vermutlich cross-origin).');
+            }
+        }
+    }
+    return cssText;
+}
+
+// Lädt den Text einer externen Ressource (für Inline-Bundle)
+async function getExternalText(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Could not fetch ${url}: ${res.status}`);
+  return await res.text();
+}
+
+/**
+ * Erzeugt JS-Bundle:
+ *   mode: 'inline' | 'cdn' | 'none'
+ *   - 'inline' => jQuery + tablesorter werden in <script> inline eingebettet (offline-fähig)
+ *   - 'cdn'    => <script src="..."> Verweise (kleine Datei, Internet erforderlich)
+ *   - 'none'   => kein JS
+ *
+ * Fallback: Falls 'inline' nicht fetchen darf/kann (CSP/offline),
+ *           wird automatisch auf 'cdn' zurückgefallen.
+ */
+async function buildJsBundle(mode = 'inline') {
+  const INIT = (
+    '<script>document.addEventListener("DOMContentLoaded",function(){' +
+      'try{' +
+        'var t=document.querySelector("table");' +
+        'if(t && window.jQuery && typeof jQuery(t).tablesorter==="function"){' +
+          'jQuery(t).tablesorter({sortReset:true});' +
+        '}' +
+      '}catch(e){console.warn("tablesorter init failed:",e);}' +
+    '});</script>'
+  );
+
+  const CDN_TAGS =
+    '<script src="https://code.jquery.com/jquery-3.6.1.min.js" crossorigin="anonymous"></script>\n' +
+    '<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.tablesorter/2.31.3/js/jquery.tablesorter.min.js" crossorigin="anonymous"></script>\n' +
+    INIT;
+
+  if (mode === 'none') return '';
+
+  if (mode === 'cdn') {
+    return CDN_TAGS;
+  }
+
+  // Default: inline
+  try {
+    const [jq, ts] = await Promise.all([
+      getExternalText('https://code.jquery.com/jquery-3.6.1.min.js'),
+      getExternalText('https://cdnjs.cloudflare.com/ajax/libs/jquery.tablesorter/2.31.3/js/jquery.tablesorter.min.js')
+    ]);
+
+    return (
+      '<script>\n' + jq + '\n</script>\n' +
+      '<script>\n' + ts + '\n</script>\n' +
+      INIT
+    );
+  } catch (e) {
+    console.warn('Inline-JS konnte nicht eingebettet werden (CSP/Offline?) – fallback auf CDN:', e);
+    return CDN_TAGS; // immer noch funktionsfähig, sobald Internet vorhanden
+  }
+}
+
+// --- NEW: Ersetze Marker durch tatsächlich gefetchtes CSS (nur same-origin) ---
+async function resolveFetchCssMarkers(cssTextWithMarkers) {
+    const markerRe = /\/\*__FETCH_CSS__:(.*?)\*\//g;
+    let out = cssTextWithMarkers;
+    const promises = [];
+    const urls = [];
+
+    let m;
+    while ((m = markerRe.exec(cssTextWithMarkers)) !== null) {
+        urls.push(m[1]);
+        promises.push(fetch(m[1]).then(r => r.text()).catch(() => '/* fetch failed */'));
+    }
+
+    const results = await Promise.all(promises);
+    results.forEach((css, idx) => {
+        out = out.replace(`/*__FETCH_CSS__:${urls[idx]}*/`, css);
+    });
+    return out;
+}
+
+// Vorhanden aus deiner Lösung:
+/// cloneWithInlineStyles(node)
+/// getCaptureTarget()
+/// computeVerticalSlices / ensureScaleWithinLimits (für Bilder)
+// ... etc.
+
+// --- NEW: Export mit eingebettetem Stylesheet + Inline-Styles ---
+a// --- Export mit eingebettetem Stylesheet + Inline-Styles + optional JS ---
+// --- Export mit eingebettetem Stylesheet + Inline-Styles + optional JS ---
+async function buildHTMLWithEmbeddedCSS({
+  standalone = false,
+  preserveBackground = true,
+  includeJS = 'none'   // <--- NEU: 'inline' | 'cdn' | 'none'
+} = {}) {
+  const target = getCaptureTarget();
+  if (!target) throw new Error("Kein Tabellen-Container (#tableWrapper/#mainTable) gefunden.");
+
+  // 1) Sichtbaren Bereich klonen und Computed Styles inline übernehmen
+  const rootClone = cloneWithInlineStyles(target);
+
+  // 2) Aufräumen (nur sichtbare Spalten/Zeilen, UI-Controls entfernen)
+  pruneForTableExport(rootClone);
+
+  // 3) Optional Hintergrund übernehmen
+  if (preserveBackground) {
+    const bodyBg = (document.body && getComputedStyle(document.body).backgroundColor) || '#ffffff';
+    rootClone.style.background = bodyBg;
+    rootClone.style.overflow = 'visible';
+    rootClone.style.maxWidth = 'none';
+    rootClone.style.maxHeight = 'none';
+  }
+
+  // 4) Tabelle finden
+  const exportedTable = rootClone.querySelector('#mainTable') || rootClone.querySelector('table') || rootClone;
+
+  // 5) CSS aus Dokument einsammeln (inkl. <link rel="stylesheet">), nur same-origin
+  let docCss = collectCSSFromDocument();
+  docCss = await resolveFetchCssMarkers(docCss);
+
+  // 6) Minimaler Reset
+  const minimalReset = `
+    table{border-collapse:collapse}
+    th,td{border:1px solid rgba(255,255,255,0.08); padding:4px 6px}
+  `;
+
+  const fragmentHTML = exportedTable.outerHTML;
+
+  if (!standalone) {
+    // Für Clipboard: Skripte sind oft nutzlos/werden gestript – deshalb KEIN JS hier
+    return `<style>${docCss}\n${minimalReset}</style>\n${fragmentHTML}`;
+  }
+
+  // 7) JS-Bundle erzeugen (inline/cdn/none)
+  const jsBundle = await buildJsBundle(includeJS);
+
+  // Vollständiges HTML-Dokument für Download
+  const docLang = document.documentElement.lang || 'de';
+  const full = [
+    '<!doctype html>',
+    `<html lang="${docLang}">`,
+    '<head>',
+    '<meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width,initial-scale=1">',
+    `<style>${docCss}\n${minimalReset}</style>`,
+    '<title>table_export</title>',
+    '</head>',
+    '<body>',
+    fragmentHTML,
+    // <--- NEU: JS-Bundle direkt vor </body> einfügen
+    jsBundle,
+    '</body>',
+    '</html>'
+  ].join('');
+  return full;
+}
+
+// --- ServiceNow friendly constants ---
+const SN_MIN_TABLE_STYLE = "border-collapse:collapse;width:100%;";
+const SN_MIN_TH_STYLE    = "border:1px solid rgba(0,0,0,0.3);padding:4px 6px;text-align:left;font-weight:600;";
+const SN_MIN_TD_STYLE    = "border:1px solid rgba(0,0,0,0.2);padding:4px 6px;text-align:left;";
+
+// Entfernt Style/Script/Link und riskante Attribute (SN-Sanitizer-freundlich)
+function sanitizeHtmlForServiceNow(htmlString) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(htmlString, "text/html");
+
+  // Entferne style/script/link
+  doc.querySelectorAll("style,script,link").forEach(n => n.remove());
+
+  // Entferne Style/Klasse/ID/Eventhandler
+  const stripAttrs = ["style", "class", "id"];
+  doc.querySelectorAll("*").forEach(el => {
+    // Eventhandler (on*)
+    [...el.attributes].forEach(a => {
+      const name = a.name.toLowerCase();
+      if (name.startsWith("on")) el.removeAttribute(a.name);
+    });
+    stripAttrs.forEach(a => el.removeAttribute(a));
+  });
+
+  // Nur die erste <table> behalten (SN-Felder sind knapp); andernfalls kompletten Body zurückgeben
+  const table = doc.querySelector("table");
+  if (table) {
+    // Wende Minimal-Styles an
+    table.setAttribute("style", SN_MIN_TABLE_STYLE);
+    table.querySelectorAll("th").forEach(th => th.setAttribute("style", SN_MIN_TH_STYLE));
+    table.querySelectorAll("td").forEach(td => td.setAttribute("style", SN_MIN_TD_STYLE));
+    return table.outerHTML;
+  } else {
+    return doc.body.innerText || ""; // Fallback: Plaintext
+  }
+}
+
+// Baut eine einfache <table> aus deinem Grid (tr.mainTr + td.dataTd[data-column])
+function buildServiceNowTableFromGrid({ maxColWidth = null } = {}) {
+  // 1) Alle Zeilen finden
+  const rows = [...document.querySelectorAll("tr.mainTr")];
+  if (rows.length === 0) return "";
+
+  // 2) Header ableiten aus data-column
+  const colOrder = [];
+  const colSet = new Set();
+  rows.forEach(tr => {
+    tr.querySelectorAll("td").forEach(td => {
+      const col = td.getAttribute("data-column");
+      if (col && !colSet.has(col)) {
+        colSet.add(col);
+        colOrder.push(col);
+      }
+    });
+  });
+
+  // Fallback, wenn keine data-column vorhanden
+  if (colOrder.length === 0) {
+    const maxCells = Math.max(
+      ...rows.map(tr => tr.querySelectorAll("td").length)
+    );
+    for (let i = 0; i < maxCells; i++) {
+      colOrder.push(`COL_${i + 1}`);
+    }
+  }
+
+  const truncate = (text) => {
+    if (!maxColWidth || maxColWidth <= 0) return text ?? "";
+    const t = (text ?? "").toString();
+    return t.length <= maxColWidth ? t : t.slice(0, maxColWidth - 1) + "…";
+  };
+
+  // 3) HTML erstellen (nur Table/Thead/Tbody/Tr/Th/Td)
+  const table = document.createElement("table");
+  table.setAttribute("style", SN_MIN_TABLE_STYLE);
+
+  // thead
+  const thead = document.createElement("thead");
+  const trHead = document.createElement("tr");
+  colOrder.forEach(h => {
+    const th = document.createElement("th");
+    th.setAttribute("style", SN_MIN_TH_STYLE);
+    th.textContent = truncate(h);
+    trHead.appendChild(th);
+  });
+  thead.appendChild(trHead);
+  table.appendChild(thead);
+
+  // tbody
+  const tbody = document.createElement("tbody");
+  rows.forEach(tr => {
+    const map = {};
+    tr.querySelectorAll("td").forEach(td => {
+      const key = td.getAttribute("data-column");
+      const val = td.innerText.trim();
+      if (key) map[key] = val;
+    });
+
+    const trBody = document.createElement("tr");
+    colOrder.forEach(col => {
+      const td = document.createElement("td");
+      td.setAttribute("style", SN_MIN_TD_STYLE);
+      td.textContent = truncate(map[col] ?? "");
+      trBody.appendChild(td);
+    });
+    tbody.appendChild(trBody);
+  });
+  table.appendChild(tbody);
+
+  return table.outerHTML;
+}
+
+// Extrahiert vorhandene <table> (falls du bereits eine echte Tabelle renderst)
+function getFirstTableHtmlOrEmpty() {
+  const t = document.querySelector("table");
+  return t ? t.outerHTML : "";
+}
+
+// Plaintext-Ausgabe (Tab-getrennt), gut für Activity-Kommentare
+function buildPlaintextFromGrid({ maxColWidth = null, sep = "\t" } = {}) {
+  const rows = [...document.querySelectorAll("tr.mainTr")];
+  if (rows.length === 0) return "";
+
+  const colOrder = [];
+  const colSet = new Set();
+  rows.forEach(tr => {
+    tr.querySelectorAll("td").forEach(td => {
+      const col = td.getAttribute("data-column");
+      if (col && !colSet.has(col)) {
+        colSet.add(col);
+        colOrder.push(col);
+      }
+    });
+  });
+
+  if (colOrder.length === 0) {
+    const maxCells = Math.max(...rows.map(tr => tr.querySelectorAll("td").length));
+    for (let i = 0; i < maxCells; i++) colOrder.push(`COL_${i + 1}`);
+  }
+
+  const truncate = (text) => {
+    if (!maxColWidth || maxColWidth <= 0) return text ?? "";
+    const t = (text ?? "").toString();
+    return t.length <= maxColWidth ? t : t.slice(0, maxColWidth - 1) + "…";
+    };
+
+  const lines = [];
+  lines.push(colOrder.join(sep));
+
+  rows.forEach(tr => {
+    const map = {};
+    tr.querySelectorAll("td").forEach(td => {
+      const key = td.getAttribute("data-column");
+      const val = td.innerText.trim();
+      if (key) map[key] = val;
+    });
+    const cells = colOrder.map(c => truncate(map[c] ?? ""));
+    lines.push(cells.join(sep));
+  });
+
+  return lines.join("\n");
+}
+
+async function copyToClipboard(textOrHtml, { asHtml = false } = {}) {
+  if (navigator.clipboard && window.ClipboardItem && asHtml) {
+    // HTML in Clipboard (wo unterstützt)
+    const blob = new Blob([textOrHtml], { type: "text/html" });
+    const item = new ClipboardItem({ "text/html": blob });
+    await navigator.clipboard.write([item]);
+  } else {
+    // Fallback: Text
+    await navigator.clipboard.writeText(textOrHtml);
+  }
+}
+
+// Lädt Text einer URL (für Inline-Bundle)
+async function getExternalText(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Could not fetch ${url}: ${res.status}`);
+  return await res.text();
+}
+
+/**
+ * Erzeugt JS-Bundle:
+ *   mode: 'inline' | 'cdn' | 'none'
+ *   - 'inline' => jQuery + tablesorter werden in <script> inline eingebettet (offline-fähig)
+ *   - 'cdn'    => <script src="..."> Verweise (kleinere Datei, benötigt Internet)
+ *   - 'none'   => kein JS (aktuelles Verhalten)
+ */
+async function buildJsBundle(mode = 'inline') {
+  if (mode === 'none') return '';
+
+  if (mode === 'cdn') {
+    return [
+      '<script src="https://code.jquery.com/jquery-3.6.1.min.js" crossorigin="anonymous"></script>',
+      '<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.tablesorter/2.31.3/js/jquery.tablesorter.min.js"></script>',
+      '<script>document.addEventListener("DOMContentLoaded",function(){try{var t=document.querySelector("table");if(t&&window.jQuery&&typeof jQuery(t).tablesorter==="function"){jQuery(t).tablesorter({sortReset:true});}}catch(e){console.warn("tablesorter init failed:",e);}});</script>'
+    ].join('\n');
+  }
+
+  // Default: inline (offline)
+  const [jq, ts] = await Promise.all([
+    getExternalText('https://code.jquery.com/jquery-3.6.1.min.js'),
+    getExternalText('https://cdnjs.cloudflare.com/ajax/libs/jquery.tablesorter/2.31.3/js/jquery.tablesorter.min.js')
+  ]);
+
+  return [
+    '<script>\n' + jq + '\n</script>',
+    '<script>\n' + ts + '\n</script>',
+    '<script>document.addEventListener("DOMContentLoaded",function(){try{var t=document.querySelector("table");if(t&&window.jQuery&&typeof jQuery(t).tablesorter==="function"){jQuery(t).tablesorter({sortReset:true});}}catch(e){console.warn("tablesorter init failed:",e);}});</script>'
+  ].join('\n');
+}
+
 function cloneWithInlineStyles(node) {
     const clone = node.cloneNode(false);
     if (node.nodeType === Node.ELEMENT_NODE) {
@@ -1440,6 +2138,52 @@ function setupCopyDropdown() {
                         downloadCSV(extractTableAsCSV());
                         break;
                     
+                    
+                    case "html": {
+                        const html = await buildHTMLWithEmbeddedCSS({ standalone: false, preserveBackground: true });
+                        // direkt als text/html ins Clipboard
+                        if (navigator.clipboard && window.ClipboardItem) {
+                            const item = new ClipboardItem({
+                                'text/html': new Blob([html], { type: 'text/html' }),
+                                'text/plain': new Blob([stripHtml(html)], { type: 'text/plain' })
+                            });
+                            await navigator.clipboard.write([item]);
+                            alert('HTML (inkl. CSS) kopiert!');
+                        } else {
+                            // Fallback
+                            const div = document.createElement('div');
+                            div.contentEditable = 'true';
+                            div.style.position = 'fixed';
+                            div.style.opacity = '0';
+                            div.style.left = '-9999px';
+                            div.innerHTML = html;
+                            document.body.appendChild(div);
+                            const range = document.createRange();
+                            range.selectNodeContents(div);
+                            const sel = window.getSelection();
+                            sel.removeAllRanges();
+                            sel.addRange(range);
+                            document.execCommand('copy');
+                            document.body.removeChild(div);
+                            alert('HTML (inkl. CSS) kopiert (Fallback)!');
+                        }
+                        break;
+                    }
+
+                    case "download html": {
+                      const fullHtml = await buildHTMLWithEmbeddedCSS({
+                        standalone: true,
+                        preserveBackground: true,
+                        includeJS: 'inline' // <--- Offline-fähig: JS wird inline eingebettet
+                      });
+                      const blob = new Blob([fullHtml], { type: "text/html;charset=utf-8" });
+                      const url  = URL.createObjectURL(blob);
+                      const a    = document.createElement("a");
+                      a.href = url; a.download = "table_export.html"; a.click();
+                      URL.revokeObjectURL(url);
+                      break;
+                    }
+
                     /* ---------------- FULL TABLE EXPORTS ---------------- */
                     
                     case "png-full": {
