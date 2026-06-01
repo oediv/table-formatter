@@ -750,7 +750,7 @@ function extractSeverityColumns(columnNames) {
         let rows = $("tr").toArray();
         for (let i = 1; i < rows.length; i++) {
             let currentColumn = rows[i].children[severityColumnCandidate];
-            if (!td || !td.textContent.trim()) continue;
+            if (!currentColumn || !currentColumn.textContent.trim()) continue;
 
             let data = currentColumn.textContent;
             
